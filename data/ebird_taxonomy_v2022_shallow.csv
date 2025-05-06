@@ -1,0 +1,41 @@
+SCIENTIFIC_NAME,TAXON_ORDER,CATEGORY,SPECIES_CODE,PRIMARY_COM_NAME,ORDER,FAMILY,REPORT_AS,HebName
+Streptopelia roseogrisea,2037,species,afcdov1,African Collared-Dove,Columbiformes,Columbidae,,תור צווארון אפריקני
+Crex egregia,5241,species,afrcra1,African Crake,Gruiformes,Rallidae,,מלכישליו אפריקני
+Rynchops flavirostris,6684,species,afrski1,African Skimmer,Charadriiformes,Laridae,,גיזרן אפריקני
+Prunella collaris,30832,species,alpacc1,Alpine Accentor,Passeriformes,Prunellidae,,סתרי צוקים
+Apus melba,4024,species,alpswi1,Alpine Swift,Caprimulgiformes,Apodidae,,סיס הרים
+Pluvialis dominica,5741,species,amgplo,American Golden-Plover,Charadriiformes,Charadriidae,,חופזי אמריקני
+Argya squamiceps,26072,species,arabab1,Arabian Babbler,Passeriformes,Leiothrichidae,,זנבן ערבי
+Gavia arctica,6715,species,arcloo,Arctic Loon,Gaviiformes,Gaviidae,,צוללן שחור-גרון
+Sterna paradisaea,6630,species,arcter,Arctic Tern,Charadriiformes,Laridae,,שחפית קוטב
+Phylloscopus borealis,24403,species,arcwar1,Arctic Warbler,Passeriformes,Phylloscopidae,,עלווית צפונית
+Larus armenicus,6458,species,armgul1,Armenian Gull,Charadriiformes,Laridae,,שחף ארמני
+Curruca nana,24788,species,asdwar1,Asian Desert Warbler,Passeriformes,Sylviidae,,סבכי מדבר
+Dicrurus leucophaeus,19946,species,ashdro1,Ashy Drongo,Passeriformes,Dicruridae,,דרונגו עשנוני
+Delichon dasypus,23735,species,ashmar1,Asian House-Martin,Passeriformes,Hirundinidae,,טסית אסייתית
+Pterodroma incerta,6916,species,atlpet1,Atlantic Petrel,Procellariiformes,Procellariidae,,סערון אטלנטי
+Fratercula arctica,6345,species,atlpuf,Atlantic Puffin,Charadriiformes,Alcidae,,תוכי-ים אטלנטי
+Ichthyaetus audouinii,6411,species,audgul1,Audouin's Gull,Charadriiformes,Laridae,,שחף אדום-מקור
+Puffinus lherminieri,7018,species,audshe,Sargasso Shearwater,Procellariiformes,Procellariidae,,יסעור מערב אטלנטי
+Zapornia pusilla,5517,species,baicra1,Baillon's Crake,Gruiformes,Rallidae,,ברודית גמדית
+Calidris bairdii,6032,species,baisan,Baird's Sandpiper,Charadriiformes,Scolopacidae,,חופית בירד
+Puffinus mauretanicus,6995,species,balshe1,Balearic Shearwater,Procellariiformes,Procellariidae,,יסעור מערבי
+Riparia riparia,23564,species,banswa,Bank Swallow,Passeriformes,Hirundinidae,,כוכית גדות
+Falco peregrinus pelegrinoides,11793,issf,barfal1,Peregrine Falcon (Barbary),Falconiformes,Falconidae,perfal,בז מדברי
+Branta leucopsis,299,species,bargoo,Barnacle Goose,Anseriformes,Anatidae,,ברנטה לבנת-לחי
+Hydrobates castro,6844,species,barpet,Band-rumped Storm-Petrel,Procellariiformes,Hydrobatidae,,יסעורון מדירה
+Hirundo rustica,23610,species,barswa,Barn Swallow,Passeriformes,Hirundinidae,,סנונית רפתות
+Curruca nisoria,24736,species,barwar1,Barred Warbler,Passeriformes,Sylviidae,,סבכי ניצי
+Acrocephalus griseldis,23164,species,barwar2,Basra Reed Warbler,Passeriformes,Acrocephalidae,,קנית בצרה
+Terathopius ecaudatus,7720,species,batele1,Bateleur,Accipitriformes,Accipitridae,,חיוויאי להטוטן
+Limosa lapponica,5953,species,batgod,Bar-tailed Godwit,Charadriiformes,Scolopacidae,,לימוזה חומת-בטן
+Ammomanes cinctura,21864,species,batlar1,Bar-tailed Lark,Passeriformes,Alaudidae,,עפרוני חכלילי
+Merops persicus,10013,species,bcbeat1,Blue-cheeked Bee-eater,Coraciiformes,Meropidae,,שרקרק ירוק
+Nycticorax nycticorax,7430,species,bcnher,Black-crowned Night Heron,Pelecaniformes,Ardeidae,,אנפת לילה
+Eremopterix nigriceps,21901,species,bcslar1,Black-crowned Sparrow-Lark,Passeriformes,Alaudidae,,צחיחן שחור-כיפה
+Panurus biarmicus,22313,species,bearee1,Bearded Reedling,Passeriformes,Panuridae,,שפמתן
+Melanocorypha bimaculata,22148,species,bimlar1,Bimaculated Lark,Passeriformes,Alaudidae,,עפרוני פסגות
+Pluvialis squatarola,5737,species,bkbplo,Black-bellied Plover,Charadriiformes,Charadriidae,,חופזי מנומר
+Chroicocephalus ridibundus,6386,species,bkhgul,Black-headed Gull,Charadriiformes,Laridae,,שחף אגמים
+Aratinga nenday,12778,species,bkhpar,Nanday Parakeet,Psittaciformes,Psittacidae,,קוניור שחור-ראש
+Anthus rubescens japonicus,31228,issf,sibpip1,Siberian Pipit,Passeriformes,Motacillidae,amepip,פפיון ממושקף

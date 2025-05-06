@@ -1,0 +1,213 @@
+Project hamaarag_proto_1 {
+  database_type: 'PostgreSQL'
+  Note: 'Hamaarag prototype database 1.0'
+}
+
+Enum migration_enum {
+  "resident"
+  "long-range migrant"
+  "short-range migrant"
+  "nomadic"
+}
+
+Enum presence_enum {
+  "vagrant"
+  "winter visitor"
+  "summer visitor"
+  "resident"
+  "passage migrant"
+}
+
+Enum landscape_enum {
+  "wet habitat"
+  "wide wadis"
+  "rural landscape"
+  "plains and valleys"
+  "mountainous area"
+  "cliffs"
+  "rocks and stony ground"
+  "urban space"
+  "sand dunes"
+}
+
+Enum vegetation_formation_enum {
+  "reedbed and sedges"
+  "gardens and parks"
+  "etsiya park forest"
+  "forest"
+  "Mediterranean maquis"
+  "low shrubland"
+  "herbaceous"
+  "high shrubland"
+  "plantations"
+  "field crops"
+}
+
+Enum vegetation_density_enum {
+  "high"
+  "medium"
+  "low"
+}
+
+Enum nest_enum {
+  "trees"
+  "bushes"
+  "cliffs"
+  "ground"
+  "ruins"
+  "dirt cliffs"
+  "reedbed and sedges"
+  "buildings"
+}
+
+Enum diet_enum {
+  "omnivore"
+  "herbivore"
+  "fish"
+  "invertebrates"
+  "terrestrial vertebrates"
+  "scavenger"
+}
+
+Enum foraging_ground_enum {
+  "land"
+  "trees and bushes"
+  "air"
+  "water"
+}
+
+Enum zoogeographic_zone_enum {
+  "Mediterranean"
+  "Irano-Turanian"
+  "Sudanese"
+  "Alpine"
+  "Saharo-Arabian"
+}
+
+Enum change_type_enum {
+  "split"
+  "lump"
+  "rename"
+  "new"
+  "deprecated"
+}
+
+Enum invasiveness_enum {
+  "alien"
+  "native"
+}
+
+Table taxon_entity {
+  taxon_entity_id uuid [pk]
+  notes text
+}
+
+Table taxon_version {
+  taxon_version_id uuid [pk]
+  taxon_entity_id uuid [ref: > taxon_entity.taxon_entity_id, note: 'ON DELETE RESTRICT']
+  version_year int [not null]
+  species_code varchar(10) [not null]
+  scientific_name text [not null]
+  primary_com_name text [not null]
+  hebrew_name text
+  order_name text
+  family_name text
+  category text [not null]
+  taxon_order int
+  report_as UUID [ref: > taxon_version.taxon_version_id, note: 'ON DELETE SET NULL']
+  is_current boolean [default: false]
+
+  Indexes {
+    (species_code, version_year) [unique]
+  }
+}
+
+Table taxon_change_log {
+  change_id int [pk]
+  from_version_id uuid [ref: > taxon_version.taxon_version_id, note: 'ON DELETE RESTRICT']
+  to_version_id uuid [ref: > taxon_version.taxon_version_id, note: 'ON DELETE RESTRICT']
+  change_type change_type_enum
+  inherits_relations boolean
+  notes text
+}
+
+Table species_traits {
+  taxon_version_id uuid [pk, ref: > taxon_version.taxon_version_id, note: 'ON DELETE CASCADE']
+  invasiveness invasiveness_enum
+  synanthrope boolean
+  breeding_IL boolean
+  mass_g float
+  reference text
+}
+
+Table gbif_taxon_link {
+  taxon_version_id UUID [pk, ref: > taxon_version.taxon_version_id]
+  gbif_taxon_id INTEGER
+  gbif_version_year INTEGER
+}
+
+Table conservation_status_lookup {
+  code text [pk]
+  status text [unique]
+}
+
+Table taxon_conservation_status {
+  taxon_version_id uuid [ref: > taxon_version.taxon_version_id, note: 'ON DELETE CASCADE']
+  conservation_scheme text
+  conservation_code text [ref: > conservation_status_lookup.code, note: 'ON DELETE RESTRICT']
+  primary key (taxon_version_id, conservation_scheme)
+}
+
+Table migration_type {
+  taxon_version_id uuid [ref: > taxon_version.taxon_version_id, note: 'ON DELETE CASCADE']
+  migration_type migration_enum
+  primary key (taxon_version_id, migration_type)
+}
+
+Table presence_IL {
+  taxon_version_id uuid [ref: > taxon_version.taxon_version_id, note: 'ON DELETE CASCADE']
+  presence_IL presence_enum
+  primary key (taxon_version_id, presence_IL)
+}
+
+Table landscape_formation {
+  taxon_version_id uuid [ref: > taxon_version.taxon_version_id, note: 'ON DELETE CASCADE']
+  landscape_formation landscape_enum
+  primary key (taxon_version_id, landscape_formation)
+}
+
+Table vegetation_formation {
+  taxon_version_id uuid [ref: > taxon_version.taxon_version_id, note: 'ON DELETE CASCADE']
+  vegetation_formation vegetation_formation_enum
+  primary key (taxon_version_id, vegetation_formation)
+}
+
+Table vegetation_density {
+  taxon_version_id uuid [ref: > taxon_version.taxon_version_id, note: 'ON DELETE CASCADE']
+  vegetation_density vegetation_density_enum
+  primary key (taxon_version_id, vegetation_density)
+}
+
+Table foraging_ground {
+  taxon_version_id uuid [ref: > taxon_version.taxon_version_id, note: 'ON DELETE CASCADE']
+  foraging_ground foraging_ground_enum
+  primary key (taxon_version_id, foraging_ground)
+}
+
+Table zoogeographic_zone {
+  taxon_version_id uuid [ref: > taxon_version.taxon_version_id, note: 'ON DELETE CASCADE']
+  zoogeographic_zone zoogeographic_zone_enum
+  primary key (taxon_version_id, zoogeographic_zone)
+}
+
+Table nesting_ground {
+  taxon_version_id uuid [ref: > taxon_version.taxon_version_id, note: 'ON DELETE CASCADE']
+  nesting_ground nest_enum
+  primary key (taxon_version_id, nesting_ground)
+}
+
+Table diet_type {
+  taxon_version_id uuid [ref: > taxon_version.taxon_version_id, note: 'ON DELETE CASCADE']
+  diet_type diet_enum
+  primary key (taxon_version_id, diet_type)
+}
