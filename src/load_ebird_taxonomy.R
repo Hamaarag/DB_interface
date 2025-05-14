@@ -12,7 +12,9 @@ library(data.table)
 library(uuid)
 
 ### Configuration ######################################################
-version_year <- 2022
+version_year <- 2024
+mark_as_current <- TRUE  # Set to TRUE if this taxonomy version should be marked as current
+taxonomy_filename <- "data/ebird_taxonomy_v2024.csv"
 
 ### Connect to PostgreSQL ##############################################
 con <- dbConnect(
@@ -25,7 +27,7 @@ con <- dbConnect(
 )
 
 ### Load and prepare input CSV #########################################
-taxon_df <- fread("data/ebird_taxonomy_v2022_shallow.csv")
+taxon_df <- fread(taxonomy_filename)
 setnames(taxon_df, c("SCIENTIFIC_NAME", "TAXON_ORDER", "CATEGORY", "SPECIES_CODE",
 					 "PRIMARY_COM_NAME", "ORDER", "FAMILY", "HebName", "REPORT_AS"),
 		 c("scientific_name", "taxon_order", "category", "species_code",
@@ -52,8 +54,8 @@ insert_taxon_record <- function(i, taxon_df, con) {
 		dbExecute(con, "INSERT INTO taxon_version (
       taxon_version_id, taxon_entity_id, version_year, species_code,
       scientific_name, primary_com_name, hebrew_name, order_name,
-      family_name, category, taxon_order) VALUES
-      ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)",
+      family_name, category, taxon_order, is_current) VALUES
+      ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)",
 				  params = list(
 				  	taxon_version_id,
 				  	taxon_entity_id,
@@ -65,7 +67,8 @@ insert_taxon_record <- function(i, taxon_df, con) {
 				  	taxon_df[i, order_name],
 				  	taxon_df[i, family_name],
 				  	taxon_df[i, category],
-				  	taxon_df[i, taxon_order]
+				  	taxon_df[i, taxon_order],
+				  	mark_as_current
 				  ))
 		
 		dbCommit(con)
@@ -94,7 +97,8 @@ for (i in 1:nrow(taxon_df)) {
 
 update_report_as <- function(i, taxon_df, uuid_map, con) {
 	report_target <- taxon_df[i, report_as]
-	if (report_target == "") report_target <- NA
+	
+	if (!is.na(report_target) && report_target != "NA" && report_target == "") report_target <- NA
 	current_code <- taxon_df[i, species_code]
 	
 	if (!is.na(report_target) && report_target != "NA") {
@@ -149,7 +153,8 @@ summary_lines <- c(
 	paste0("- taxon_version records inserted: ", inserted_count),
 	paste0("- taxon insert failures: ", nrow(skipped_taxon_inserts)),
 	paste0("- orphaned taxon_entity records removed: ", orphans_removed),
-	paste0("- report_as values not resolved: ", nrow(skipped_report_as))
+	paste0("- report_as values not resolved: ", nrow(skipped_report_as)),
+	paste0("- is_current set to: ", mark_as_current)
 )
 
 writeLines(summary_lines, "output/taxon_loading_summary.log")

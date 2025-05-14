@@ -12,7 +12,25 @@ library(data.table)
 library(magrittr)
 
 ### Configuration ######################################################
-version_year <- 2022
+version_year <- 2024
+trait_data_filename <- "data/20231228_BirdSpeciesTraitTable_SingleHeader.csv"
+
+trait_sets <- list(
+	list("MigrationType._", "migration_type", "migration_type", "migration_enum"),
+	list("ZoogeoZone._", "zoogeographic_zone", "zoogeographic_zone", "zoogeographic_zone_enum"),
+	list("LandscapeFormation_", "landscape_formation", "landscape_formation", "landscape_enum"),
+	list("VegetationFormation_", "vegetation_formation", "vegetation_formation", "vegetation_formation_enum"),
+	list("VegetationDensity._", "vegetation_density", "vegetation_density", "vegetation_density_enum"),
+	list("nest_location_", "nesting_ground", "nesting_ground", "nest_enum"),
+	list("DietType._", "diet_type", "diet_type", "diet_enum"),
+	list("ForagingGround_", "foraging_ground", "foraging_ground", "foraging_ground_enum")
+)
+
+conservation_schemes <- list(
+	list(column = "ConservationCodeWorld", scheme = "Global"),
+	list(column = "ConservationCodeIL2002", scheme = "IL_2002"),
+	list(column = "ConservationCodeIL2018", scheme = "IL_2018")
+)
 
 ### Connect to PostgreSQL ############################################
 con <- dbConnect(
@@ -25,10 +43,11 @@ con <- dbConnect(
 )
 
 ### Load helper and mapping data #####################################
-csv_data <- fread("data/20231228_BirdSpeciesTraitTable_SingleHeader_shallow.csv")
+csv_data <- read.csv(trait_data_filename, fileEncoding = "Windows-1255", stringsAsFactors = FALSE) # fread doesn't support this encoding
+csv_data <- as.data.table(csv_data)
 csv_data[, PresenceIL := tolower(trimws(PresenceIL))]
 
-mapping_cleanup <- fread("data/trait_value_mapping.csv")
+trait_value_mapping_df <- fread("data/trait_value_mapping.csv")
 
 ### Utility functions ##################################################
 fetch_enum_values <- function(enum_name, con) {
@@ -42,18 +61,18 @@ get_taxon_version_id <- function(species_code, con, version_year) {
 	if (nrow(res) == 1) res$taxon_version_id else NA
 }
 
-apply_mapping <- function(value_vec, mapping_table) {
-	clean_vec <- gsub("[._]", " ", value_vec) %>% trimws() %>% tolower()
-	mapped <- mapping_table[match(clean_vec, tolower(input)), mapped]
-	ifelse(!is.na(mapped), mapped, clean_vec)
-}
-
 pivot_traits <- function(df, pattern, enum_colname, mapping_table) {
 	trait_cols <- grep(pattern, names(df), value = TRUE)
 	long_df <- melt(df[, c("SPECIES_CODE", trait_cols), with = FALSE], id.vars = "SPECIES_CODE", variable.name = "trait", value.name = "present")
 	long_df <- long_df[present == 1, .(species_code = SPECIES_CODE, trait = gsub(pattern, "", trait))]
 	long_df[, (enum_colname) := apply_mapping(trait, mapping_table)][, trait := NULL]
 	return(long_df)
+}
+
+apply_mapping <- function(value_vec, mapping_table) {
+	clean_vec <- gsub("[._]", " ", value_vec) %>% trimws() %>% tolower()
+	mapped <- mapping_table[match(clean_vec, tolower(input)), mapped]
+	ifelse(!is.na(mapped), mapped, clean_vec)
 }
 
 insert_species_trait_record <- function(i, csv_data, con, version_year) {
@@ -89,6 +108,34 @@ insert_species_trait_record <- function(i, csv_data, con, version_year) {
 			species_code = csv_data[i, SPECIES_CODE],
 			trait_table = "species_traits",
 			trait_value = invasiveness,
+			reason = e$message
+		)))
+	})
+}
+
+insert_conservation_status_record <- function(taxon_version_id, scheme, code, valid_codes, species_code) {
+	if (is.na(code) || code == "") return(NULL)
+	if (!(code %in% valid_codes)) {
+		return(list(success = FALSE, skipped = data.table(
+			species_code = species_code,
+			trait_table = "taxon_conservation_status",
+			trait_value = code,
+			reason = "Invalid conservation code"
+		)))
+	}
+	tryCatch({
+		dbBegin(con)
+		dbExecute(con, "INSERT INTO taxon_conservation_status (taxon_version_id, conservation_scheme, conservation_code)
+                VALUES ($1, $2, $3)",
+				  params = list(taxon_version_id, scheme, code))
+		dbCommit(con)
+		return(list(success = TRUE))
+	}, error = function(e) {
+		dbRollback(con)
+		return(list(success = FALSE, skipped = data.table(
+			species_code = species_code,
+			trait_table = "taxon_conservation_status",
+			trait_value = code,
 			reason = e$message
 		)))
 	})
@@ -141,25 +188,6 @@ insert_multivalue_trait <- function(pivoted_df, table_name, enum_col, enum_type_
 	return(list(inserted = inserted, skipped = skipped, unmatched = unmatched))
 }
 
-### Run main import process ###########################################
-counters <- data.table(
-	table = c("species_traits", "presence_IL", "skipped_species_traits"),
-	count = c(0, 0, 0)
-)
-link_table_counts <- data.table(table = character(), count = integer())
-skipped_records <- data.table()
-unmatched_enum_values <- data.table()
-
-for (i in 1:nrow(csv_data)) {
-	result <- insert_species_trait_record(i, csv_data, con, version_year)
-	if (result$success) {
-		counters[table == "species_traits", count := count + 1]
-	} else {
-		counters[table == "skipped_species_traits", count := count + 1]
-		skipped_records <- rbind(skipped_records, result$skipped)
-	}
-}
-
 insert_presence_il_record <- function(i, csv_data, con, version_year, valid_presence) {
 	skipped <- data.table()
 	unmatched <- data.table()
@@ -204,6 +232,27 @@ insert_presence_il_record <- function(i, csv_data, con, version_year, valid_pres
 	return(list(inserted = inserted, skipped = skipped, unmatched = unmatched))
 }
 
+### Run main import process ###########################################
+counters <- data.table(
+	table = c("species_traits", "presence_IL", "skipped_species_traits"),
+	count = c(0, 0, 0)
+)
+link_table_counts <- data.table(table = character(), count = integer())
+skipped_records <- data.table()
+unmatched_enum_values <- data.table()
+
+# insert species_traits records
+for (i in 1:nrow(csv_data)) {
+	result <- insert_species_trait_record(i, csv_data, con, version_year)
+	if (result$success) {
+		counters[table == "species_traits", count := count + 1]
+	} else {
+		counters[table == "skipped_species_traits", count := count + 1]
+		skipped_records <- rbind(skipped_records, result$skipped)
+	}
+}
+
+# insert presence_IL records
 valid_presence <- fetch_enum_values("presence_enum", con)
 
 presence_inserted <- 0
@@ -215,24 +264,44 @@ for (i in 1:nrow(csv_data)) {
 }
 counters[table == "presence_IL", count := presence_inserted]
 
-
-trait_sets <- list(
-	list("MigrationType._", "migration_type", "migration_type", "migration_enum"),
-	list("ZoogeoZone._", "zoogeographic_zone", "zoogeographic_zone", "zoogeographic_zone_enum"),
-	list("LandscapeFormation_", "landscape_formation", "landscape_formation", "landscape_enum"),
-	list("VegetationFormation_", "vegetation_formation", "vegetation_formation", "vegetation_formation_enum"),
-	list("VegetationDensity._", "vegetation_density", "vegetation_density", "vegetation_density_enum"),
-	list("nest_location_", "nesting_ground", "nesting_ground", "nest_enum"),
-	list("DietType._", "diet_type", "diet_type", "diet_enum"),
-	list("ForagingGround_", "foraging_ground", "foraging_ground", "foraging_ground_enum")
-)
-
+# insert multivalue traits
 for (set in trait_sets) {
-	pivoted <- pivot_traits(csv_data, set[[1]], set[[3]], mapping_cleanup)
+	pivoted <- pivot_traits(csv_data, set[[1]], set[[3]], trait_value_mapping_df)
 	result <- insert_multivalue_trait(pivoted, set[[2]], set[[3]], set[[4]], con, version_year)
 	link_table_counts <- rbind(link_table_counts, data.table(table = set[[2]], count = result$inserted))
 	skipped_records <- rbind(skipped_records, result$skipped)
 	unmatched_enum_values <- rbind(unmatched_enum_values, result$unmatched)
+}
+
+# insert conservation status records
+valid_conservation_codes <- fetch_enum_values("conservation_status_enum", con)
+conservation_counts <- data.table(scheme = c("Global", "IL_2002", "IL_2018"), count = 0)
+
+for (i in 1:nrow(csv_data)) {
+	version_id <- get_taxon_version_id(csv_data[i, SPECIES_CODE], con, version_year)
+	if (is.na(version_id)) {
+		for (s in conservation_schemes) {
+			code <- csv_data[i, get(s$column)]
+			skipped_records <- rbind(skipped_records, data.table(
+				species_code = csv_data[i, SPECIES_CODE],
+				trait_table = "taxon_conservation_status",
+				trait_value = code,
+				reason = "taxon_version_id not found"
+			))
+		}
+		next
+	}
+	for (s in conservation_schemes) {
+		code <- csv_data[i, get(s$column)]
+		result <- insert_conservation_status_record(version_id, s$scheme, code, valid_conservation_codes, csv_data[i, SPECIES_CODE])
+		if (!is.null(result)) {
+			if (result$success) {
+				conservation_counts[scheme == s$scheme, count := count + 1]
+			} else {
+				skipped_records <- rbind(skipped_records, result$skipped)
+			}
+		}
+	}
 }
 
 ### Disconnect and log output #########################################
@@ -241,13 +310,12 @@ if (!dir.exists("output")) dir.create("output")
 
 records_attempted <- nrow(csv_data)
 
-records_attempted <- nrow(taxon_df)
-
 summary_lines <- c(
 	paste0("Total records in input CSV: ", records_attempted),
 	paste0("- skipped_species_traits: ", counters[table == "skipped_species_traits", count]),
 	"\nSpecies trait loading completed.",
 	"Records inserted:",
+	paste0("- conservation status: ", paste0(conservation_counts$scheme, ": ", conservation_counts$count, collapse = ", ")),
 	paste0("- ", counters[!table %in% c("skipped_species_traits", "skipped_presence"), table], ": ", counters[!table %in% c("skipped_species_traits", "skipped_presence"), count]),
 	paste0("- ", link_table_counts$table, ": ", link_table_counts$count),
 	"",
