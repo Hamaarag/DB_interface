@@ -13,7 +13,7 @@ library(magrittr)
 
 ### Configuration ######################################################
 version_year <- 2024
-trait_data_filename <- "data/20231228_BirdSpeciesTraitTable_SingleHeader.csv"
+trait_data_filename <- "data/BirdSpeciesTraitTable_SingleHeader.csv"
 
 trait_sets <- list(
 	list("MigrationType._", "migration_type", "migration_type", "migration_enum"),
@@ -43,23 +43,38 @@ con <- dbConnect(
 )
 
 ### Load helper and mapping data #####################################
-csv_data <- read.csv(trait_data_filename, fileEncoding = "Windows-1255", stringsAsFactors = FALSE) # fread doesn't support this encoding
+csv_data <- read.csv(trait_data_filename, fileEncoding = "Windows-1255", stringsAsFactors = FALSE)
 csv_data <- as.data.table(csv_data)
 csv_data[, PresenceIL := tolower(trimws(PresenceIL))]
 
 trait_value_mapping_df <- fread("data/trait_value_mapping.csv")
 
-### Utility functions ##################################################
-fetch_enum_values <- function(enum_name, con) {
-	sql <- sprintf("SELECT unnest(enum_range(NULL::%s)) AS val", enum_name)
-	dbGetQuery(con, sql)$val
+# Cache taxon_version_id lookup
+version_lookup <- dbGetQuery(con, sprintf("
+  SELECT species_code, category, hebrew_name, scientific_name, taxon_version_id
+  FROM taxon_version
+  WHERE version_year = %d", version_year))
+
+get_taxon_version_id <- function(species_code, category, hebrew_name, scientific_name) {
+	row <- version_lookup[
+		version_lookup$species_code == species_code &
+			version_lookup$category == category &
+			(version_lookup$hebrew_name == hebrew_name | version_lookup$scientific_name == scientific_name),
+	]
+	if (nrow(row) == 1) row$taxon_version_id else NA
 }
 
-get_taxon_version_id <- function(species_code, con, version_year) {
-	res <- dbGetQuery(con, "SELECT taxon_version_id FROM taxon_version WHERE species_code = $1 AND version_year = $2",
-					  params = list(species_code, version_year))
-	if (nrow(res) == 1) res$taxon_version_id else NA
+# Cache enum values for all types
+enum_cache <- list(
+	presence_enum = dbGetQuery(con, "SELECT unnest(enum_range(NULL::presence_enum)) AS val")$val,
+	conservation_status_enum = dbGetQuery(con, "SELECT unnest(enum_range(NULL::conservation_status_enum)) AS val")$val
+)
+
+for (set in trait_sets) {
+	enum_cache[[set[[4]]]] <- dbGetQuery(con, sprintf("SELECT unnest(enum_range(NULL::%s)) AS val", set[[4]]))$val
 }
+
+### Utility functions ##################################################
 
 pivot_traits <- function(df, pattern, enum_colname, mapping_table) {
 	trait_cols <- grep(pattern, names(df), value = TRUE)
@@ -75,23 +90,43 @@ apply_mapping <- function(value_vec, mapping_table) {
 	ifelse(!is.na(mapped), mapped, clean_vec)
 }
 
-insert_species_trait_record <- function(i, csv_data, con, version_year) {
-	version_id <- get_taxon_version_id(csv_data[i, SPECIES_CODE], con, version_year)
+accumulate_results <- function(results_list) {
+	if (length(results_list) == 0) return(data.table())
+	rbindlist(results_list, use.names = TRUE, fill = TRUE)
+}
+
+### Run main import process ###########################################
+counters <- data.table(
+	table = c("species_traits", "presence_IL", "skipped_species_traits"),
+	count = c(0, 0, 0)
+)
+skipped_list <- list()
+unmatched_list <- list()
+link_table_counts <- list()
+
+# insert species_traits records----
+for (i in seq_len(nrow(csv_data))) {
+	version_id <- get_taxon_version_id(
+		csv_data[i, SPECIES_CODE],
+		csv_data[i, CATEGORY],
+		csv_data[i, HebName],
+		csv_data[i, SCIENTIFIC_NAME]
+	)
+	
 	if (is.na(version_id)) {
-		return(list(success = FALSE, skipped = data.table(
+		skipped_list[[length(skipped_list)+1]] <- data.table(
 			species_code = csv_data[i, SPECIES_CODE],
 			trait_table = "species_traits",
 			trait_value = NA,
 			reason = "taxon_version_id not found"
-		)))
+		)
+		counters[table == "skipped_species_traits", count := count + 1]
+		next
 	}
-	
 	invasiveness <- ifelse(csv_data[i, AlienInvasive] == 1, "alien", ifelse(csv_data[i, NativeInvasive] == 1, "native", NA))
-	
 	tryCatch({
 		dbBegin(con)
-		dbExecute(con, "INSERT INTO species_traits (taxon_version_id, invasiveness, synanthrope, breeding_IL, mass_g, reference)
-                    VALUES ($1, $2, $3, $4, $5, $6)",
+		dbExecute(con, "INSERT INTO species_traits (taxon_version_id, invasiveness, synanthrope, breeding_IL, mass_g, reference) VALUES ($1, $2, $3, $4, $5, $6)",
 				  params = list(
 				  	version_id,
 				  	invasiveness,
@@ -101,208 +136,161 @@ insert_species_trait_record <- function(i, csv_data, con, version_year) {
 				  	csv_data[i, Reference]
 				  ))
 		dbCommit(con)
-		return(list(success = TRUE))
+		counters[table == "species_traits", count := count + 1]
 	}, error = function(e) {
 		dbRollback(con)
-		return(list(success = FALSE, skipped = data.table(
+		skipped_list[[length(skipped_list)+1]] <- data.table(
 			species_code = csv_data[i, SPECIES_CODE],
 			trait_table = "species_traits",
 			trait_value = invasiveness,
 			reason = e$message
-		)))
+		)
+		counters[table == "skipped_species_traits", count := count + 1]
 	})
 }
 
-insert_conservation_status_record <- function(taxon_version_id, scheme, code, valid_codes, species_code) {
-	if (is.na(code) || code == "") return(NULL)
-	if (!(code %in% valid_codes)) {
-		return(list(success = FALSE, skipped = data.table(
-			species_code = species_code,
-			trait_table = "taxon_conservation_status",
-			trait_value = code,
-			reason = "Invalid conservation code"
-		)))
-	}
-	tryCatch({
-		dbBegin(con)
-		dbExecute(con, "INSERT INTO taxon_conservation_status (taxon_version_id, conservation_scheme, conservation_code)
-                VALUES ($1, $2, $3)",
-				  params = list(taxon_version_id, scheme, code))
-		dbCommit(con)
-		return(list(success = TRUE))
-	}, error = function(e) {
-		dbRollback(con)
-		return(list(success = FALSE, skipped = data.table(
-			species_code = species_code,
-			trait_table = "taxon_conservation_status",
-			trait_value = code,
-			reason = e$message
-		)))
-	})
-}
-
-insert_multivalue_trait <- function(pivoted_df, table_name, enum_col, enum_type_name, con, version_year) {
-	enum_vals <- fetch_enum_values(enum_type_name, con)
-	inserted <- 0
-	skipped <- data.table()
-	unmatched <- data.table()
+# insert presence_IL records----
+presence_inserted <- 0
+for (i in seq_len(nrow(csv_data))) {
+	version_id <- get_taxon_version_id(
+		csv_data[i, SPECIES_CODE],
+		csv_data[i, CATEGORY],
+		csv_data[i, HebName],
+		csv_data[i, SCIENTIFIC_NAME]
+	)
 	
-	for (i in 1:nrow(pivoted_df)) {
-		version_id <- get_taxon_version_id(pivoted_df[i, species_code], con, version_year)
+	if (is.na(version_id)) next
+	presence_values <- strsplit(csv_data[i, PresenceIL], ",")[[1]] %>% trimws() %>% tolower()
+	for (p in presence_values) {
+		if (p != "" && !is.na(p) && p %in% enum_cache$presence_enum) {
+			tryCatch({
+				dbBegin(con)
+				dbExecute(con, "INSERT INTO presence_il (taxon_version_id, presence_il) VALUES ($1, $2)", params = list(version_id, p))
+				dbCommit(con)
+				presence_inserted <- presence_inserted + 1
+			}, error = function(e) {
+				dbRollback(con)
+				skipped_list[[length(skipped_list)+1]] <- data.table(
+					species_code = csv_data[i, SPECIES_CODE],
+					trait_table = "presence_il",
+					trait_value = p,
+					reason = e$message
+				)
+			})
+		} else if (!(p %in% enum_cache$presence_enum)) {
+			unmatched_list[[length(unmatched_list)+1]] <- data.table(
+				trait_type = "presence_enum",
+				unmatched_value = p,
+				species_code = csv_data[i, SPECIES_CODE]
+			)
+		}
+	}
+}
+counters[table == "presence_IL", count := presence_inserted]
+
+# insert multivalue traits----
+for (set in trait_sets) {
+	pivoted <- pivot_traits(csv_data, set[[1]], set[[3]], trait_value_mapping_df)
+	inserted <- 0
+	skipped_local <- list()
+	unmatched_local <- list()
+	for (i in seq_len(nrow(pivoted))) {
+		version_id <- get_taxon_version_id(
+			csv_data[i, SPECIES_CODE],
+			csv_data[i, CATEGORY],
+			csv_data[i, HebName],
+			csv_data[i, SCIENTIFIC_NAME]
+		)
+		
 		if (is.na(version_id)) {
-			skipped <- rbind(skipped, data.table(
-				species_code = pivoted_df[i, species_code],
-				trait_table = table_name,
-				trait_value = pivoted_df[i, get(enum_col)],
+			skipped_local[[length(skipped_local)+1]] <- data.table(
+				species_code = pivoted[i, species_code],
+				trait_table = set[[2]],
+				trait_value = pivoted[i, get(set[[3]])],
 				reason = "taxon_version_id not found"
-			))
+			)
 			next
 		}
-		
-		val <- pivoted_df[i, get(enum_col)]
-		if (!(val %in% enum_vals)) {
-			unmatched <- rbind(unmatched, data.table(
-				trait_type = enum_type_name,
+		val <- pivoted[i, get(set[[3]])]
+		if (!(val %in% enum_cache[[set[[4]]]])) {
+			unmatched_local[[length(unmatched_local)+1]] <- data.table(
+				trait_type = set[[4]],
 				unmatched_value = val,
-				species_code = pivoted_df[i, species_code]
-			))
+				species_code = pivoted[i, species_code]
+			)
 			next
 		}
-		
 		tryCatch({
 			dbBegin(con)
-			dbExecute(con, sprintf("INSERT INTO %s (taxon_version_id, %s) VALUES ($1, $2)", table_name, enum_col),
+			dbExecute(con, sprintf("INSERT INTO %s (taxon_version_id, %s) VALUES ($1, $2)", set[[2]], set[[3]]),
 					  params = list(version_id, val))
 			dbCommit(con)
 			inserted <- inserted + 1
 		}, error = function(e) {
 			dbRollback(con)
-			skipped <- rbind(skipped, data.table(
-				species_code = pivoted_df[i, species_code],
-				trait_table = table_name,
+			skipped_local[[length(skipped_local)+1]] <- data.table(
+				species_code = pivoted[i, species_code],
+				trait_table = set[[2]],
 				trait_value = val,
 				reason = e$message
-			))
+			)
 		})
 	}
-	return(list(inserted = inserted, skipped = skipped, unmatched = unmatched))
+	link_table_counts[[set[[2]]]] <- inserted
+	skipped_list <- c(skipped_list, skipped_local)
+	unmatched_list <- c(unmatched_list, unmatched_local)
 }
 
-insert_presence_il_record <- function(i, csv_data, con, version_year, valid_presence) {
-	skipped <- data.table()
-	unmatched <- data.table()
-	inserted <- 0
-	
-	version_id <- get_taxon_version_id(csv_data[i, SPECIES_CODE], con, version_year)
-	if (is.na(version_id)) {
-		return(list(inserted = 0, skipped = data.table(), unmatched = data.table()))
-	}
-	
-	presence_values <- strsplit(csv_data[i, PresenceIL], ",")[[1]] %>% trimws() %>% tolower()
-	for (p in presence_values) {
-		if (p != "" && !is.na(p) && p %in% valid_presence) {
-			result <- tryCatch({
-				dbBegin(con)
-				dbExecute(con, "INSERT INTO presence_il (taxon_version_id, presence_il) VALUES ($1, $2)",
-						  params = list(version_id, p))
-				dbCommit(con)
-				list(success = TRUE)
-			}, error = function(e) {
-				dbRollback(con)
-				list(success = FALSE, skipped_record = data.table(
-					species_code = csv_data[i, SPECIES_CODE],
-					trait_table = "presence_il",
-					trait_value = p,
-					reason = e$message
-				))
-			})
-			if (!result$success) {
-				skipped <- rbind(skipped, result$skipped_record)
-			} else {
-				inserted <- inserted + 1
-			}
-		} else if (!(p %in% valid_presence)) {
-			unmatched <- rbind(unmatched, data.table(
-				trait_type = "presence_enum",
-				unmatched_value = p,
-				species_code = csv_data[i, SPECIES_CODE]
-			))
-		}
-	}
-	return(list(inserted = inserted, skipped = skipped, unmatched = unmatched))
-}
-
-### Run main import process ###########################################
-counters <- data.table(
-	table = c("species_traits", "presence_IL", "skipped_species_traits"),
-	count = c(0, 0, 0)
-)
-link_table_counts <- data.table(table = character(), count = integer())
-skipped_records <- data.table()
-unmatched_enum_values <- data.table()
-
-# insert species_traits records
-for (i in 1:nrow(csv_data)) {
-	result <- insert_species_trait_record(i, csv_data, con, version_year)
-	if (result$success) {
-		counters[table == "species_traits", count := count + 1]
-	} else {
-		counters[table == "skipped_species_traits", count := count + 1]
-		skipped_records <- rbind(skipped_records, result$skipped)
-	}
-}
-
-# insert presence_IL records
-valid_presence <- fetch_enum_values("presence_enum", con)
-
-presence_inserted <- 0
-for (i in 1:nrow(csv_data)) {
-	result <- insert_presence_il_record(i, csv_data, con, version_year, valid_presence)
-	presence_inserted <- presence_inserted + result$inserted
-	skipped_records <- rbind(skipped_records, result$skipped)
-	unmatched_enum_values <- rbind(unmatched_enum_values, result$unmatched)
-}
-counters[table == "presence_IL", count := presence_inserted]
-
-# insert multivalue traits
-for (set in trait_sets) {
-	pivoted <- pivot_traits(csv_data, set[[1]], set[[3]], trait_value_mapping_df)
-	result <- insert_multivalue_trait(pivoted, set[[2]], set[[3]], set[[4]], con, version_year)
-	link_table_counts <- rbind(link_table_counts, data.table(table = set[[2]], count = result$inserted))
-	skipped_records <- rbind(skipped_records, result$skipped)
-	unmatched_enum_values <- rbind(unmatched_enum_values, result$unmatched)
-}
-
-# insert conservation status records
-valid_conservation_codes <- fetch_enum_values("conservation_status_enum", con)
+# insert conservation status records----
 conservation_counts <- data.table(scheme = c("Global", "IL_2002", "IL_2018"), count = 0)
-
-for (i in 1:nrow(csv_data)) {
-	version_id <- get_taxon_version_id(csv_data[i, SPECIES_CODE], con, version_year)
-	if (is.na(version_id)) {
-		for (s in conservation_schemes) {
-			code <- csv_data[i, get(s$column)]
-			skipped_records <- rbind(skipped_records, data.table(
+for (i in seq_len(nrow(csv_data))) {
+	version_id <- get_taxon_version_id(
+		csv_data[i, SPECIES_CODE],
+		csv_data[i, CATEGORY],
+		csv_data[i, HebName],
+		csv_data[i, SCIENTIFIC_NAME]
+	)
+	
+	for (s in conservation_schemes) {
+		code <- csv_data[i, get(s$column)]
+		if (is.na(version_id)) {
+			skipped_list[[length(skipped_list)+1]] <- data.table(
 				species_code = csv_data[i, SPECIES_CODE],
 				trait_table = "taxon_conservation_status",
 				trait_value = code,
 				reason = "taxon_version_id not found"
-			))
+			)
+			next
 		}
-		next
-	}
-	for (s in conservation_schemes) {
-		code <- csv_data[i, get(s$column)]
-		result <- insert_conservation_status_record(version_id, s$scheme, code, valid_conservation_codes, csv_data[i, SPECIES_CODE])
-		if (!is.null(result)) {
-			if (result$success) {
+		if (!is.na(code) && code != "" && code %in% enum_cache$conservation_status_enum) {
+			tryCatch({
+				dbBegin(con)
+				dbExecute(con, "INSERT INTO taxon_conservation_status (taxon_version_id, conservation_scheme, conservation_code) VALUES ($1, $2, $3)",
+						  params = list(version_id, s$scheme, code))
+				dbCommit(con)
 				conservation_counts[scheme == s$scheme, count := count + 1]
-			} else {
-				skipped_records <- rbind(skipped_records, result$skipped)
-			}
+			}, error = function(e) {
+				dbRollback(con)
+				skipped_list[[length(skipped_list)+1]] <- data.table(
+					species_code = csv_data[i, SPECIES_CODE],
+					trait_table = "taxon_conservation_status",
+					trait_value = code,
+					reason = e$message
+				)
+			})
+		} else if (!(code %in% enum_cache$conservation_status_enum)) {
+			unmatched_list[[length(unmatched_list)+1]] <- data.table(
+				trait_type = "conservation_status_enum",
+				unmatched_value = code,
+				species_code = csv_data[i, SPECIES_CODE]
+			)
 		}
 	}
 }
+
+skipped_records <- accumulate_results(skipped_list)
+unmatched_enum_values <- accumulate_results(unmatched_list)
+link_table_counts_dt <- data.table(table = names(link_table_counts), count = unlist(link_table_counts))
 
 ### Disconnect and log output #########################################
 dbDisconnect(con)
@@ -316,8 +304,8 @@ summary_lines <- c(
 	"\nSpecies trait loading completed.",
 	"Records inserted:",
 	paste0("- conservation status: ", paste0(conservation_counts$scheme, ": ", conservation_counts$count, collapse = ", ")),
-	paste0("- ", counters[!table %in% c("skipped_species_traits", "skipped_presence"), table], ": ", counters[!table %in% c("skipped_species_traits", "skipped_presence"), count]),
-	paste0("- ", link_table_counts$table, ": ", link_table_counts$count),
+	paste0("- ", counters[!table %in% c("skipped_species_traits"), table], ": ", counters[!table %in% c("skipped_species_traits"), count]),
+	paste0("- ", link_table_counts_dt$table, ": ", link_table_counts_dt$count),
 	"",
 	paste0("Unmatched ENUM values: ", nrow(unmatched_enum_values))
 )
