@@ -1,5 +1,19 @@
 -- ENUM TYPES CREATION
 
+CREATE TYPE conservation_status_enum AS ENUM (
+  'LC',            -- Least concern
+  'NE',            -- Not evaluated
+  'NT',            -- Near threatened
+  'EN',            -- Endangered
+  'VU',            -- Vulnerable
+  'CR',            -- Critically endangered
+  'DD',            -- Data deficient
+  'RE_AS_BREED',   -- Regionally extinct as nesting
+  'RE',            -- Regionally extinct
+  'EW',            -- Extinct in the wild
+  'EX'             -- Extinct
+);
+
 CREATE TYPE migration_enum AS ENUM (
   'resident',
   'long-range migrant',
@@ -143,14 +157,14 @@ CREATE TABLE gbif_taxon_link (
 );
 
 CREATE TABLE conservation_status_lookup (
-  code TEXT PRIMARY KEY,
-  status TEXT UNIQUE
+  status_code conservation_status_enum PRIMARY KEY,
+  status_description TEXT NOT NULL UNIQUE
 );
 
 CREATE TABLE taxon_conservation_status (
   taxon_version_id UUID REFERENCES taxon_version(taxon_version_id) ON DELETE CASCADE,
-  conservation_scheme TEXT,
-  conservation_code TEXT REFERENCES conservation_status_lookup(code) ON DELETE RESTRICT,
+  conservation_scheme TEXT NOT NULL,
+  conservation_code conservation_status_enum NOT NULL,
   PRIMARY KEY (taxon_version_id, conservation_scheme)
 );
 

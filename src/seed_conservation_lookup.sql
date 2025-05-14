@@ -1,7 +1,6 @@
 -- Seed values for conservation_status_lookup
 
 INSERT INTO conservation_status_lookup (code, description) VALUES
-  ('NA', 'Not available'),
   ('LC', 'Least concern'),
   ('NE', 'Not evaluated'),
   ('NT', 'Near threatened'),

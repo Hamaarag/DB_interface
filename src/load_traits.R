@@ -43,7 +43,7 @@ con <- dbConnect(
 )
 
 ### Load helper and mapping data #####################################
-csv_data <- read.csv(trait_data_filename, fileEncoding = "Windows-1255", stringsAsFactors = FALSE)
+csv_data <- read.csv(trait_data_filename, fileEncoding = "UTF-8", stringsAsFactors = FALSE)
 csv_data <- as.data.table(csv_data)
 csv_data[, PresenceIL := tolower(trimws(PresenceIL))]
 
@@ -110,7 +110,7 @@ for (i in seq_len(nrow(csv_data))) {
 		csv_data[i, SPECIES_CODE],
 		csv_data[i, CATEGORY],
 		csv_data[i, HebName],
-		csv_data[i, SCIENTIFIC_NAME]
+		csv_data[i, SCI_NAME]
 	)
 	
 	if (is.na(version_id)) {
@@ -156,7 +156,7 @@ for (i in seq_len(nrow(csv_data))) {
 		csv_data[i, SPECIES_CODE],
 		csv_data[i, CATEGORY],
 		csv_data[i, HebName],
-		csv_data[i, SCIENTIFIC_NAME]
+		csv_data[i, SCI_NAME]
 	)
 	
 	if (is.na(version_id)) next
@@ -199,7 +199,7 @@ for (set in trait_sets) {
 			csv_data[i, SPECIES_CODE],
 			csv_data[i, CATEGORY],
 			csv_data[i, HebName],
-			csv_data[i, SCIENTIFIC_NAME]
+			csv_data[i, SCI_NAME]
 		)
 		
 		if (is.na(version_id)) {
@@ -248,7 +248,7 @@ for (i in seq_len(nrow(csv_data))) {
 		csv_data[i, SPECIES_CODE],
 		csv_data[i, CATEGORY],
 		csv_data[i, HebName],
-		csv_data[i, SCIENTIFIC_NAME]
+		csv_data[i, SCI_NAME]
 	)
 	
 	for (s in conservation_schemes) {
@@ -278,7 +278,7 @@ for (i in seq_len(nrow(csv_data))) {
 					reason = e$message
 				)
 			})
-		} else if (!(code %in% enum_cache$conservation_status_enum)) {
+		} else if (!is.na(code) && !(code %in% enum_cache$conservation_status_enum)) {
 			unmatched_list[[length(unmatched_list)+1]] <- data.table(
 				trait_type = "conservation_status_enum",
 				unmatched_value = code,
