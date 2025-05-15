@@ -3,6 +3,20 @@ Project hamaarag_proto_1 {
   Note: 'Hamaarag prototype database 1.0'
 }
 
+Enum conservation_status_enum {
+  "LC"
+  "NE"
+  "NT"
+  "EN"
+  "VU"
+  "CR"
+  "DD"
+  "RE_AS_BREED"
+  "RE"
+  "EW"
+  "EX"
+}
+
 Enum migration_enum {
   "resident"
   "long-range migrant"
@@ -147,14 +161,14 @@ Table gbif_taxon_link {
 }
 
 Table conservation_status_lookup {
-  code text [pk]
-  status text [unique]
+  status_code conservation_status_enum [pk]
+  status_description text [unique]
 }
 
 Table taxon_conservation_status {
   taxon_version_id uuid [ref: > taxon_version.taxon_version_id, note: 'ON DELETE CASCADE']
-  conservation_scheme text
-  conservation_code text [ref: > conservation_status_lookup.code, note: 'ON DELETE RESTRICT']
+  conservation_scheme text [not null]
+  conservation_code conservation_status_enum [not null]
   primary key (taxon_version_id, conservation_scheme)
 }
 
