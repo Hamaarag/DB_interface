@@ -52,13 +52,14 @@ skipped_report_as <- data.table()
 ### Insert taxon_entity and taxon_version ##############################
 species_code_to_taxon_version_id <- list()
 
+# add start-time timer
+start_time <- Sys.time()
+
 insert_taxon_record <- function(i, taxon_df, con) {
 	taxon_entity_id <- UUIDgenerate()
 	taxon_version_id <- UUIDgenerate()
 	
 	tryCatch({
-		dbBegin(con)
-		
 		dbExecute(con, "INSERT INTO taxon_entity (taxon_entity_id, notes) VALUES ($1, $2)",
 				  params = list(taxon_entity_id, ""))
 		
@@ -82,11 +83,9 @@ insert_taxon_record <- function(i, taxon_df, con) {
 				  	mark_as_current
 				  ))
 		
-		dbCommit(con)
 		return(list(success = TRUE, species_code = taxon_df[i, species_code], taxon_version_id = taxon_version_id))
 		
 	}, error = function(e) {
-		dbRollback(con)
 		return(list(success = FALSE, skipped_record = data.table(
 			species_code = taxon_df[i, species_code],
 			reason = e$message
@@ -94,14 +93,51 @@ insert_taxon_record <- function(i, taxon_df, con) {
 	})
 }
 
+batch_count <- 0 # for batch processing
+dbBegin(con)
+
 for (i in 1:nrow(taxon_df)) {
-	result <- insert_taxon_record(i, taxon_df, con)
-	if (result$success) {
-		inserted_count <- inserted_count + 1
-		species_code_to_taxon_version_id[[result$species_code]] <- result$taxon_version_id
-	} else {
-		skipped_taxon_inserts <- rbind(skipped_taxon_inserts, result$skipped_record)
+	
+	#  if insert_taxon_record() itself fails due to a database error (e.g., constraint violation), it reports the skipped record
+	#  include also per-batch rollback in case a record fails
+	tryCatch({
+		result <- insert_taxon_record(i, taxon_df, con)
+		if (result$success) {
+			inserted_count <- inserted_count + 1
+			species_code_to_taxon_version_id[[result$species_code]] <- result$taxon_version_id
+		} else {
+			skipped_taxon_inserts <- rbind(skipped_taxon_inserts, result$skipped_record)
+		}
+	}, error = function(e) {
+		message(sprintf("Batch error on row %d: %s. Rolling back batch.", i, e$message))
+		dbRollback(con)
+		dbBegin(con)
+		batch_count <<- 0
+	})
+	
+	# Commit every 200 records
+	batch_count <- batch_count + 1
+	if (batch_count >= 200) {
+		dbCommit(con)
+		dbBegin(con)
+		batch_count <- 0
 	}
+	
+	# Print progress every 100 records
+	if (i %% 100 == 0) {
+		elapsed <- round(difftime(Sys.time(), start_time, units = "mins"), 2)
+		message(sprintf("Processed row %d of %d (%.1f%%) — Inserted: %d, Skipped: %d — Elapsed: %s min", 
+						i, nrow(taxon_df),
+						100 * i / nrow(taxon_df),
+						inserted_count,
+						nrow(skipped_taxon_inserts),
+						elapsed))
+	}
+}
+
+# Final commit for any remaining records
+if (batch_count > 0) {
+	dbCommit(con)
 }
 
 ### Second pass: update report_as UUIDs ###############################
@@ -159,13 +195,16 @@ if (!dir.exists("output")) dir.create("output")
 
 records_attempted <- nrow(taxon_df)
 
+elapsed_total <- round(difftime(Sys.time(), start_time, units = "mins"), 2)
+
 summary_lines <- c(
 	paste0("Total records in input CSV: ", records_attempted),
 	paste0("- taxon_version records inserted: ", inserted_count),
 	paste0("- taxon insert failures: ", nrow(skipped_taxon_inserts)),
 	paste0("- orphaned taxon_entity records removed: ", orphans_removed),
 	paste0("- report_as values not resolved: ", nrow(skipped_report_as)),
-	paste0("- is_current set to: ", mark_as_current)
+	paste0("- is_current set to: ", mark_as_current),
+	paste0("Elapsed time (min): ", elapsed_total)
 )
 
 writeLines(summary_lines, "output/taxon_loading_summary.log")
