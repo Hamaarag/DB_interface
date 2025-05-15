@@ -17,13 +17,24 @@ mark_as_current <- TRUE  # Set to TRUE if this taxonomy version should be marked
 taxonomy_filename <- "data/ebird_taxonomy_v2024.csv"
 
 ### Connect to PostgreSQL ##############################################
+# for local connection
+# con <- dbConnect(
+# 	Postgres(),
+# 	dbname = "Hamaarag_prototype_1",
+# 	host = "localhost",
+# 	port = 5432,
+# 	user = "postgres",
+# 	password = "ronch@hamaarag"
+# )
+
+# for remote connection
 con <- dbConnect(
 	Postgres(),
-	dbname = "Hamaarag_prototype_1",
-	host = "localhost",
-	port = 5432,
-	user = "postgres",
-	password = "ronch@hamaarag"
+	dbname = Sys.getenv("DB_NAME"),
+	host = Sys.getenv("DB_HOST"),
+	port = as.integer(Sys.getenv("DB_PORT")),
+	user = Sys.getenv("DB_USER"),
+	password = Sys.getenv("DB_PASSWORD")
 )
 
 ### Load and prepare input CSV #########################################
