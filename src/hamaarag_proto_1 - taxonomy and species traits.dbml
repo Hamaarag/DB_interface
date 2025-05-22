@@ -77,7 +77,7 @@ Enum nest_enum {
 Enum diet_enum {
   "omnivore"
   "herbivore"
-  "fish"
+  "piscivore"
   "invertebrates"
   "terrestrial vertebrates"
   "scavenger"
@@ -149,7 +149,7 @@ Table species_traits {
   taxon_version_id uuid [pk, ref: > taxon_version.taxon_version_id, note: 'ON DELETE CASCADE']
   invasiveness invasiveness_enum
   synanthrope boolean
-  breeding_IL boolean
+  breeding_il boolean
   mass_g float
   reference text
 }

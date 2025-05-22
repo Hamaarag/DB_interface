@@ -74,7 +74,7 @@ CREATE TYPE nest_enum AS ENUM (
 CREATE TYPE diet_enum AS ENUM (
   'omnivore',
   'herbivore',
-  'fish',
+  'piscivore',
   'invertebrates',
   'terrestrial vertebrates',
   'scavenger'
@@ -145,7 +145,7 @@ CREATE TABLE species_traits (
   taxon_version_id UUID PRIMARY KEY REFERENCES taxon_version(taxon_version_id) ON DELETE CASCADE,
   invasiveness invasiveness_enum,
   synanthrope BOOLEAN,
-  breeding_IL BOOLEAN,
+  breeding_il BOOLEAN,
   mass_g FLOAT,
   reference TEXT
 );
