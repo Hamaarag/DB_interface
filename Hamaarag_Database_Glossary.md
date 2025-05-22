@@ -54,7 +54,7 @@
 - `PRIMARY KEY (taxon_version_id, conservation_scheme)`
 
 ### 8–15. Trait Link Tables
-- One table each: `migration_type`, `presence_IL`, `landscape_formation`, `vegetation_formation`, `vegetation_density`, `foraging_ground`, `zoogeographic_zone`, `nesting_ground`, `diet_type`
+- One table each: `migration_type`, `presence_il`, `landscape_formation`, `vegetation_formation`, `vegetation_density`, `foraging_ground`, `zoogeographic_zone`, `nesting_ground`, `diet_type`
 - Fields:
   - `taxon_version_id` (UUID, FK): Links trait to a specific taxon version. `[ON DELETE CASCADE]`
   - (trait field) (`ENUM`): Specific trait assigned (e.g., `migration_type = 'resident'`)
@@ -71,7 +71,7 @@
 - **`vegetation_formation_enum`**: reedbed, forest types, gardens, etc.
 - **`vegetation_density_enum`**: high, medium, low
 - **`nest_enum`**: trees, bushes, cliffs, ground, ruins, etc.
-- **`diet_enum`**: omnivore, herbivore, invertebrates, fish, etc.
+- **`diet_enum`**: omnivore, herbivore, invertebrates, piscivore, etc.
 - **`foraging_ground_enum`**: land, trees and bushes, air, water
 - **`zoogeographic_zone_enum`**: Mediterranean, Irano-Turanian, Sudanese, Alpine, Saharo-Arabian
 - **`change_type_enum`**: split, lump, rename, new, deprecated

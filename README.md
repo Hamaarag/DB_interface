@@ -51,6 +51,8 @@ A dual-structure approach is used for taxonomy:
 * `taxon_entity`: Stores the stable identifier for a species or taxon concept, independent of time.
 * `taxon_version`: Stores the versioned, year-specific representation of that taxon, including names, categories, and identifiers.
   This separation allows full traceability of taxonomic changes over time, supports longitudinal analyses, and facilitates “reporting as” logic via the `report_as` field.
+* `taxon_change_log`: Records explicit taxonomic changes between versions, such as splits, lumps, renames, additions, or deprecations. Each row documents a directional relationship between two `taxon_version` records along with a `change_type`, enabling historical traceability, lineage reconstruction, and formal modeling of taxonomic evolution across time.
+* `gbif_taxon_link`: Associates each `taxon_version` with a corresponding GBIF taxon identifier. This provides an external reference for interoperability with global biodiversity datasets and supports integration with GBIF-mediated occurrence records, traits, and classification systems.
 
 ### 3. Use of ENUM Types
 
