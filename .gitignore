@@ -51,3 +51,9 @@ rsconnect/
 
 # output folder with log files
 output/
+
+# .idea folder for JetBrains IDEs
+.idea/
+
+# anaconda project files
+anaconda_projects/
