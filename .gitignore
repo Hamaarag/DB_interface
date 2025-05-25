@@ -57,3 +57,6 @@ output/
 
 # anaconda project files
 anaconda_projects/
+
+# vscode settings
+.vscode/
