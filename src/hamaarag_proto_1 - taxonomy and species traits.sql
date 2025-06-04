@@ -146,6 +146,8 @@ CREATE TABLE species_traits (
   invasiveness invasiveness_enum,
   synanthrope BOOLEAN,
   breeding_il BOOLEAN,
+  associated_with_sampled_habitats BOOLEAN,
+  associated_with_sampled_habitats_comment TEXT,
   mass_g FLOAT,
   reference TEXT
 );
@@ -160,6 +162,20 @@ CREATE TABLE conservation_status_lookup (
   status_code conservation_status_enum PRIMARY KEY,
   status_description TEXT NOT NULL UNIQUE
 );
+
+-- Insert standard conservation status descriptions
+INSERT INTO conservation_status_lookup (status_code, status_description) VALUES
+  ('LC', 'Least concern'),
+  ('NE', 'Not evaluated'),
+  ('NT', 'Near threatened'),
+  ('EN', 'Endangered'),
+  ('VU', 'Vulnerable'),
+  ('CR', 'Critically endangered'),
+  ('DD', 'Data deficient'),
+  ('RE_AS_BREED', 'Regionally extinct as nesting'),
+  ('RE', 'Regionally extinct'),
+  ('EW', 'Extinct in the wild'),
+  ('EX', 'Extinct');
 
 CREATE TABLE taxon_conservation_status (
   taxon_version_id UUID REFERENCES taxon_version(taxon_version_id) ON DELETE CASCADE,
