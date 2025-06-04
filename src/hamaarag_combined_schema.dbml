@@ -1,8 +1,29 @@
-Project hamaarag_proto_1 {
+Project hamaarag_combined {
   database_type: 'PostgreSQL'
-  Note: 'Hamaarag prototype database 1.0'
+  Note: 'Hamaarag integrated database schema combining taxonomy and monitoring'
 }
 
+// References between schemas
+Ref: monitoring_event.weather_code > weather_description_lookup.weather_code
+
+// Enum Definitions
+Enum dune_type_enum {
+  "Shifting"
+  "Semi-shifting"
+}
+
+Enum habitat_type_enum {
+  "Basalt"
+  "Limestone"
+  "Slope"
+  "Wadi"
+}
+
+Enum land_use_enum {
+  "Bedouin Agriculture"
+  "KKL Plantings"
+  "Natural Loess"
+}
 Enum conservation_status_enum {
   "LC"
   "NE"
@@ -111,6 +132,7 @@ Enum invasiveness_enum {
   "native"
 }
 
+// Taxonomy Tables
 Table taxon_entity {
   taxon_entity_id uuid [pk]
   notes text
@@ -226,4 +248,106 @@ Table diet_type {
   taxon_version_id uuid [ref: > taxon_version.taxon_version_id, note: 'ON DELETE CASCADE']
   diet_type diet_enum
   primary key (taxon_version_id, diet_type)
+}
+
+// Monitoring Tables
+Table monitoring_unit {
+  unit_id uuid [pk]
+  unit_name text [not null]
+  subunit_name text
+  description text
+}
+
+Table monitoring_site {
+  site_id uuid [pk]
+  unit_id uuid [ref: > monitoring_unit.unit_id, note: 'ON DELETE RESTRICT']
+  site_name text [not null]
+  description text
+
+  Indexes {
+    (unit_id, site_name) [unique, name: 'unique_site_in_unit']
+  }
+}
+
+Table weather_description_lookup {
+  weather_code text [pk]
+  weather_description text [not null]
+}
+
+Table monitoring_point {
+  point_id uuid [pk]
+  unit_id uuid [ref: > monitoring_unit.unit_id, note: 'ON DELETE RESTRICT']
+  site_id uuid [ref: > monitoring_site.site_id, note: 'ON DELETE RESTRICT']
+  point_name text [not null]
+  longitude numeric(9,6) [not null]
+  latitude numeric(8,6) [not null]
+  habitat_type habitat_type_enum
+  agriculture text
+  settlements text
+  dunes dune_type_enum
+  land_use land_use_enum
+  notes text
+
+  Indexes {
+    (unit_id, point_name) [unique, name: 'unique_point_in_unit']
+    (latitude, longitude) [unique, name: 'unique_coordinates']
+  }
+}
+
+Table monitoring_campaign {
+  campaign_id uuid [pk]
+  campaign_code text [not null, unique]
+  start_year integer [not null]
+  end_year integer [not null]
+  description text
+
+  Note: 'Constraint: start_year <= end_year'
+}
+
+Table monitoring_event {
+  event_id uuid [pk]
+  campaign_id uuid [ref: > monitoring_campaign.campaign_id, note: 'ON DELETE RESTRICT']
+  point_id uuid [ref: > monitoring_point.point_id, note: 'ON DELETE RESTRICT']
+  event_date date [not null]
+  start_time time
+  weather_code text [ref: > weather_description_lookup.weather_code]
+  temperature smallint
+  wind smallint
+  clouds smallint
+  precipitation smallint
+  disturbances text
+  monitors_name text
+  notes text
+
+  Indexes {
+    (campaign_id, point_id, event_date) [unique, name: 'unique_event']
+  }
+}
+
+Table species_observation {
+  observation_id uuid [pk]
+  event_id uuid [ref: > monitoring_event.event_id, note: 'ON DELETE RESTRICT']
+  taxon_id uuid [ref: > taxon_version.taxon_version_id, note: 'ON DELETE RESTRICT']
+  first_five_mins boolean [not null, note: 'TRUE if observation was in first five minutes, FALSE otherwise']
+  radius_0_20 integer [default: 0]
+  radius_20_100 integer [default: 0]
+  radius_100_250 integer [default: 0]
+  radius_over_250 integer [default: 0]
+  count_under_250 integer [note: 'Generated column: radius_0_20 + radius_20_100 + radius_100_250']
+  is_interacting boolean
+  notes text
+
+  Note: 'Constraint: All radius values must be >= 0'
+}
+
+Table species_breeding_relationship {
+  relationship_id uuid [pk]
+  unit_id uuid [ref: > monitoring_unit.unit_id, note: 'ON DELETE RESTRICT']
+  taxon_id uuid [ref: > taxon_entity.taxon_entity_id, note: 'ON DELETE RESTRICT']
+  is_breeding boolean [not null]
+  notes text
+
+  Indexes {
+    (unit_id, taxon_id) [unique, name: 'unique_breeding_relationship']
+  }
 }
