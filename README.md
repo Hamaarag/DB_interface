@@ -58,7 +58,7 @@ All categorical fields that represent closed, standardized sets of values (e.g.,
 
 A dual-structure approach is used for taxonomy:
 
-* `taxon_entity`: Stores the stable identifier for a species or taxon concept, independent of time.
+* `taxon_entity`: Stores the stable identifier for a species or taxon concept, independent of time. The rational is as follows: a given population P of species A is observed in a defined region (e.g., red-rumped swallow in Israel). Over time, due to advances in scientific knowledge followed by taxonomic refinement, species A may undergo splits / lumps, with population P now being called a different name. The new name will be stored in a new `taxon_version` record (see below), but the same `taxon_entity` record should be linked to both the old and the new `taxon_version` records.
 * `taxon_version`: Stores the versioned, year-specific representation of that taxon, including names, categories, and identifiers.
   This separation allows full traceability of taxonomic changes over time, supports longitudinal analyses, and facilitates "reporting as" logic via the `report_as` field.
 * `taxon_change_log`: Records explicit taxonomic changes between versions, such as splits, lumps, renames, additions, or deprecations. Each row documents a directional relationship between two `taxon_version` records along with a `change_type`, enabling historical traceability, lineage reconstruction, and formal modeling of taxonomic evolution across time.
