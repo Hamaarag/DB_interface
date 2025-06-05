@@ -132,7 +132,7 @@ CREATE TABLE species_observation (  observation_id UUID PRIMARY KEY,
 CREATE TABLE species_breeding_relationship (
   relationship_id UUID PRIMARY KEY,
   unit_id UUID REFERENCES monitoring_unit(unit_id) ON DELETE RESTRICT,
-  taxon_id UUID REFERENCES taxon_entity(taxon_id) ON DELETE RESTRICT,
+  taxon_id UUID REFERENCES taxon_version(taxon_version_id) ON DELETE RESTRICT,
   is_breeding BOOLEAN NOT NULL,
   notes TEXT,
   
