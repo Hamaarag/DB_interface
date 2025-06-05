@@ -16,7 +16,7 @@ The documentation is organized into three main files:
 2. **SCHEMA.md** - Comprehensive schema reference with detailed table and field descriptions
 3. **IMPLEMENTATION.md** - Setup instructions, data loading procedures, and query examples
 
-## Requirements
+## Design Requirements
 
 This database was designed to fulfill the following core requirements:
 
@@ -112,14 +112,15 @@ The observation model connects monitoring events with taxonomy:
 
 The `first_five_mins` boolean field in species observations enables standardized analysis of detection timing, while the distance bands (0-20m, 20-100m, etc.) support density and abundance calculations.
 
-## Implementation Steps
+## Design and Implementation Chronology
 
 * Schema designed and visualized in `dbdiagram.io`
 * SQL DDL written and tested in pgAdmin
 * ENUM types created for all categorical fields
 * Core tables implemented with referential integrity
 * Lookup tables (e.g., `conservation_status_lookup`, `weather_description_lookup`) seeded via SQL
-* Data loading scripts developed in R (`load_traits.R`) and Python (`load_monitoring_data.py`)
+* Data loading scripts developed in R (`load_traits.R`; `load_ebird_taxonomy.R`) and Python (`load_monitoring_data.py`)
+* Environment variable support added for secure database credential handling
 * Full schema deployed to local PostgreSQL and replicated to Google Cloud SQL
 * Documentation updated to reflect schema changes
 

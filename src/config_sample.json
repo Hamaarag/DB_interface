@@ -1,0 +1,23 @@
+{
+  "files": {
+    "source_file": "../data/Abreed_and_non_breed.csv"
+  },
+  "mappings": {
+    "species_codes": {
+      "source_column": "species_code",
+      "target_table": "taxon_version",
+      "target_column": "species_code",
+      "filter": {
+        "is_current": true
+      }
+    },
+    "breeding_status": {
+      "breeding": true,
+      "non-breeding": false
+    },
+    "interaction": {
+      "yes": true,
+      "no": false
+    }
+  }
+}

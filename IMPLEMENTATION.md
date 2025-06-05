@@ -7,8 +7,8 @@
 - PostgreSQL 12+
 - Python 3.6+
 - R 4.4+ with `renv` package
-- Required Python packages: pandas, psycopg2
-
+- Required Python packages: pandas>=1.3.0, psycopg2>=2.9.0, python-dotenv>=0.19.0, uuid>=1.30
+  
 ### Database Setup
 
 1. Create a PostgreSQL database:
@@ -24,9 +24,21 @@
 
 ### Configuration
 
-1. Configure database connection:
-   - For Python scripts, update `src/database.ini` with your connection details
-   - For R scripts, create a configuration file based on `src/config_sample.json`
+1. Install required Python packages:
+   ```bash
+   pip install pandas>=1.3.0 psycopg2>=2.9.0 python-dotenv>=0.19.0 uuid>=1.30
+   ```
+
+2. Configure database connection by creating a `.env` file in the project root with the following content:
+   ```
+   DB_NAME=your_database_name
+   DB_HOST=your_database_host
+   DB_PORT=5432
+   DB_USER=your_username
+   DB_PASSWORD=your_password
+   ```
+   
+   > **Note**: The `.env` file is excluded from git by `.gitignore` to prevent sensitive credentials from being committed.
 
 2. Enable R environment with `renv`:
    ```R
@@ -65,17 +77,19 @@ This script:
 
 ### Monitoring Data Loading
 
-Run the monitoring data loading script to import monitoring data:
+The monitoring data is loaded from a single source CSV file (`Abreed_and_non_breed.csv`):
 
 ```bash
-python src/load_monitoring_data.py
+python src/load_monitoring_data.py --config src/config_sample.json
 ```
 
 This script:
-1. Loads monitoring units, sites, and points
-2. Imports campaign and event data
-3. Processes species observations
-4. Links observations to taxonomy
+1. Reads database connection details from the `.env` file in the project root
+2. Reads the source file containing all monitoring data
+3. Extracts and loads monitoring units, sites, and points
+4. Extracts and creates campaigns and events
+5. Processes species observations from the same file
+6. Links observations to taxonomy
 
 ## Query Examples
 
