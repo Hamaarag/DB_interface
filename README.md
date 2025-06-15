@@ -16,6 +16,19 @@ The documentation is organized into three main files:
 2. **SCHEMA.md** - Comprehensive schema reference with detailed table and field descriptions
 3. **IMPLEMENTATION.md** - Setup instructions, data loading procedures, and query examples
 
+## Development Environment
+
+This project uses a Conda environment to ensure consistent package versions and dependencies:
+
+- **Python 3.10** is the recommended Python version
+- **Conda environment** is created at `c:\my_python_envs\hamaarag_env`
+- **Environment setup** is automated with setup scripts (`setup_environment.bat` or `setup_environment.ps1`)
+- **Dependencies** are managed through `requirements.txt`
+- **Environment variables** for database connections are stored in a local `.env` file (not committed to git)
+- **Configuration** is managed through JSON files that specify data sources, mappings, and taxon version filtering options
+
+See `IMPLEMENTATION.md` for detailed setup instructions.
+
 ## Design Requirements
 
 This database was designed to fulfill the following core requirements:
