@@ -3,9 +3,6 @@ Project hamaarag_combined {
   Note: 'Hamaarag integrated database schema combining taxonomy and monitoring'
 }
 
-// References between schemas
-Ref: monitoring_event.weather_code > weather_description_lookup.weather_code
-
 // Enum Definitions
 Enum dune_type_enum {
   "Shifting"
@@ -202,10 +199,10 @@ Table migration_type {
   primary key (taxon_version_id, migration_type)
 }
 
-Table presence_IL {
+Table presence_il {
   taxon_version_id uuid [ref: > taxon_version.taxon_version_id, note: 'ON DELETE CASCADE']
-  presence_IL presence_enum
-  primary key (taxon_version_id, presence_IL)
+  presence_il presence_enum
+  primary key (taxon_version_id, presence_il)
 }
 
 Table landscape_formation {
@@ -333,7 +330,7 @@ Table species_observation {
   radius_20_100 integer [default: 0]
   radius_100_250 integer [default: 0]
   radius_over_250 integer [default: 0]
-  count_under_250 integer [note: 'Generated column: radius_0_20 + radius_20_100 + radius_100_250']
+  count_under_250 integer [note: 'Generated column: radius_0_20 + radius_20_100 + radius_100_250', not null]
   is_interacting boolean
   notes text
 
@@ -343,7 +340,7 @@ Table species_observation {
 Table species_breeding_relationship {
   relationship_id uuid [pk]
   unit_id uuid [ref: > monitoring_unit.unit_id, note: 'ON DELETE RESTRICT']
-  taxon_id uuid [ref: > taxon_entity.taxon_entity_id, note: 'ON DELETE RESTRICT']
+  taxon_id uuid [ref: > taxon_version.taxon_version_id, note: 'ON DELETE RESTRICT']
   is_breeding boolean [not null]
   notes text
 

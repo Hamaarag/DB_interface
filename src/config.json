@@ -1,6 +1,6 @@
 {
   "files": {
-    "source_file": "../data/Abreed_and_non_breed.csv"
+    "source_file": "./data/Abreed_and_non_breed.csv"
   },
   "mappings": {
     "species_codes": {
@@ -19,5 +19,8 @@
       "yes": true,
       "no": false
     }
+  },
+  "taxon_version": {
+    "version_year": 2024
   }
 }

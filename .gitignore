@@ -42,6 +42,14 @@ vignettes/*.pdf
 # Python Environment Variables
 .env
 
+# Python environments
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.conda/
+hamaarag_env/
+
 # pkgdown site
 docs/
 

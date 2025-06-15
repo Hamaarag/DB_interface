@@ -5,7 +5,7 @@ Project monitoring_units_and_observations {
 
 // Reference to the main taxonomy schema
 Ref: species_observation.taxon_id > taxon_version.taxon_version_id
-Ref: species_breeding_relationship.taxon_id > taxon_entity.taxon_entity_id
+Ref: species_breeding_relationship.taxon_id > taxon_version.taxon_version_id
 Ref: monitoring_event.weather_code > weather_description_lookup.weather_code
 
 // Enums
@@ -103,13 +103,13 @@ Table monitoring_event {
 Table species_observation {
   observation_id uuid [pk]
   event_id uuid [ref: > monitoring_event.event_id, note: 'ON DELETE RESTRICT']
-  taxon_id uuid [note: 'References taxon_version.taxon_version_id from the taxonomy schema']
+  taxon_id uuid [ref: > taxon_version.taxon_version_id, note: 'ON DELETE RESTRICT']
   first_five_mins boolean [not null, note: 'TRUE if observation was in first five minutes, FALSE otherwise']
   radius_0_20 integer [default: 0]
   radius_20_100 integer [default: 0]
   radius_100_250 integer [default: 0]
   radius_over_250 integer [default: 0]
-  count_under_250 integer [note: 'Generated column: radius_0_20 + radius_20_100 + radius_100_250']
+  count_under_250 integer [note: 'Generated column: radius_0_20 + radius_20_100 + radius_100_250', not null]
   is_interacting boolean
   notes text
 
@@ -119,7 +119,7 @@ Table species_observation {
 Table species_breeding_relationship {
   relationship_id uuid [pk]
   unit_id uuid [ref: > monitoring_unit.unit_id, note: 'ON DELETE RESTRICT']
-  taxon_id uuid [note: 'References taxon_entity.taxon_entity_id from the taxonomy schema']
+  taxon_id uuid [ref: > taxon_version.taxon_version_id, note: 'ON DELETE RESTRICT']
   is_breeding boolean [not null]
   notes text
 

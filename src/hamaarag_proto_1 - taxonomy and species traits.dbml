@@ -180,10 +180,10 @@ Table migration_type {
   primary key (taxon_version_id, migration_type)
 }
 
-Table presence_IL {
+Table presence_il {
   taxon_version_id uuid [ref: > taxon_version.taxon_version_id, note: 'ON DELETE CASCADE']
-  presence_IL presence_enum
-  primary key (taxon_version_id, presence_IL)
+  presence_il presence_enum
+  primary key (taxon_version_id, presence_il)
 }
 
 Table landscape_formation {
