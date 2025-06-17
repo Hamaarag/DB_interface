@@ -61,17 +61,21 @@ def clean_coordinates(input_file, output_file, flagged_file, distance_threshold=
         # Filter out rows with missing coordinates
         df_with_coords = df.dropna(subset=["latitude", "longitude"]).copy()
         df_without_coords = df[df["latitude"].isna() | df["longitude"].isna()].copy()
-
+        
         logger.info(f"Found {len(df_with_coords)} rows with valid coordinates")
         logger.info(f"Found {len(df_without_coords)} rows without valid coordinates")
 
         # Group by unit, subunit, site, and point_name to find duplicates
         point_groups = df_with_coords.groupby(["unit", "subunit", "site", "point_name"])
-
+        
+        # Calculate total unique point groups upfront
+        unique_point_groups_count = len(point_groups)
+        
         cleaned_rows = []
         flagged_rows = []
         cleaning_stats = {
             "total_points": 0,
+            "unique_point_groups": unique_point_groups_count,
             "unique_points": 0,
             "auto_corrected": 0,
             "flagged_for_review": 0,
@@ -159,12 +163,13 @@ def clean_coordinates(input_file, output_file, flagged_file, distance_threshold=
         final_df = pd.DataFrame(cleaned_rows)
         if len(df_without_coords) > 0:
             final_df = pd.concat([final_df, df_without_coords], ignore_index=True)
-
-        # Write outputs
-        logger.info(f"Writing cleaned data to {output_file}")
+        logger.info(f"Writing cleaned data to {output_file}")        # Write outputs
         final_df.to_csv(output_file, index=False)
 
         if flagged_rows:
+            logger.info("Finding nearest neighbors for flagged coordinates...")
+            enhanced_flagged_rows = find_nearest_neighbors(flagged_rows, df_with_coords)
+            
             logger.info(f"Writing flagged discrepancies to {flagged_file}")
             flagged_df = pd.DataFrame(flagged_rows)
             flagged_df.to_csv(flagged_file, index=False)
@@ -174,6 +179,7 @@ def clean_coordinates(input_file, output_file, flagged_file, distance_threshold=
         logger.info(f"Total rows processed: {len(df)}")
         logger.info(f"Rows with valid coordinates: {len(df_with_coords)}")
         logger.info(f"Rows without coordinates: {len(df_without_coords)}")
+        logger.info(f"Unique point groups examined: {cleaning_stats['unique_point_groups']}")
         logger.info(
             f"Points with unique coordinates: {cleaning_stats['unique_points']}"
         )
@@ -202,6 +208,71 @@ def clean_coordinates(input_file, output_file, flagged_file, distance_threshold=
     except Exception as e:
         logger.error(f"Error during coordinate cleaning: {e}")
         raise
+
+
+def find_nearest_neighbors(flagged_rows, df_with_coords):
+    """
+    For each flagged coordinate, find the nearest point from the entire dataset.
+    
+    Args:
+        flagged_rows: List of flagged coordinate discrepancies
+        df_with_coords: DataFrame containing all points with valid coordinates
+    
+    Returns:
+        Enhanced flagged_rows with nearest neighbor information
+    """
+    enhanced_flagged_rows = []
+    
+    for flagged_point in flagged_rows:
+        enhanced_point = flagged_point.copy()
+        
+        # Extract all flagged coordinates for this point
+        flagged_coords = []
+        coord_idx = 1
+        while f"coordinates_{coord_idx}" in flagged_point:
+            coord_str = flagged_point[f"coordinates_{coord_idx}"]
+            lat, lon = map(float, coord_str.split(','))
+            flagged_coords.append((lat, lon, coord_idx))
+            coord_idx += 1
+        
+        # For each flagged coordinate, find nearest neighbor
+        for lat, lon, idx in flagged_coords:
+            min_distance = float('inf')
+            nearest_point = None
+            
+            # Check against all points in the dataset
+            for _, row in df_with_coords.iterrows():
+                # Skip if this is the same point group
+                if (row['unit'] == flagged_point['unit'] and 
+                    row['subunit'] == flagged_point['subunit'] and
+                    row['site'] == flagged_point['site'] and
+                    row['point_name'] == flagged_point['point_name']):
+                    continue
+                
+                distance = calculate_distance(lat, lon, row['latitude'], row['longitude'])
+                if distance < min_distance:
+                    min_distance = distance
+                    nearest_point = row
+            
+            if nearest_point is not None:
+                # Add nearest neighbor info for this coordinate
+                enhanced_point[f"nearest_point_{idx}_unit"] = nearest_point['unit']
+                enhanced_point[f"nearest_point_{idx}_subunit"] = nearest_point['subunit']
+                enhanced_point[f"nearest_point_{idx}_site"] = nearest_point['site']
+                enhanced_point[f"nearest_point_{idx}_name"] = nearest_point['point_name']
+                enhanced_point[f"nearest_point_{idx}_distance_m"] = round(min_distance, 1)
+                  # Find all campaigns for this nearest point
+                nearest_campaigns = df_with_coords[
+                    (df_with_coords['unit'] == nearest_point['unit']) &
+                    (df_with_coords['subunit'] == nearest_point['subunit']) &
+                    (df_with_coords['site'] == nearest_point['site']) &
+                    (df_with_coords['point_name'] == nearest_point['point_name'])
+                ]['campaign'].unique()
+                enhanced_point[f"nearest_point_{idx}_campaigns"] = ';'.join(nearest_campaigns)
+        
+        enhanced_flagged_rows.append(enhanced_point)
+    
+    return enhanced_flagged_rows
 
 
 def main():
