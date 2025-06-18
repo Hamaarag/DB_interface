@@ -15,6 +15,7 @@ import argparse
 import logging
 from datetime import datetime
 from geopy.distance import geodesic
+from sklearn.neighbors import BallTree
 import sys
 import os
 
@@ -128,8 +129,7 @@ def clean_coordinates(input_file, output_file, flagged_file, distance_threshold=
                     logger.info(
                         f"  Auto-corrected {len(group_df)} rows (max distance: {max_distance:.1f}m)"
                     )
-                else:
-                    # Flag for manual review
+                else:                    # Flag for manual review
                     flagged_info = {
                         "unit": unit,
                         "subunit": subunit,
@@ -140,11 +140,14 @@ def clean_coordinates(input_file, output_file, flagged_file, distance_threshold=
                         "row_count": len(group_df),
                     }
 
-                    # Add coordinate details
+                    # Add all coordinate details first
                     for idx, (_, coord_row) in enumerate(unique_coords.iterrows()):
                         flagged_info[f"coordinates_{idx+1}"] = (
                             f"{coord_row['latitude']},{coord_row['longitude']}"
                         )
+                    
+                    # Then add all campaign details
+                    for idx, (_, coord_row) in enumerate(unique_coords.iterrows()):
                         # Find campaigns using these coordinates
                         campaigns = group_df[
                             (group_df["latitude"] == coord_row["latitude"])
@@ -171,7 +174,29 @@ def clean_coordinates(input_file, output_file, flagged_file, distance_threshold=
             enhanced_flagged_rows = find_nearest_neighbors(flagged_rows, df_with_coords)
             
             logger.info(f"Writing flagged discrepancies to {flagged_file}")
-            flagged_df = pd.DataFrame(flagged_rows)
+            
+            # Create DataFrame with explicit column ordering
+            desired_columns = [
+                'unit', 'subunit', 'site', 'point_name', 'max_distance_meters', 
+                'coordinate_count', 'row_count', 'coordinates_1', 'coordinates_2',
+                'coordinates_3', 
+                'campaigns_1', 'campaigns_2',
+                'campaigns_3',  
+                'nearest_point_1_unit', 'nearest_point_1_subunit', 'nearest_point_1_site',
+                'nearest_point_1_name', 'nearest_point_1_distance_m', 'nearest_point_1_campaigns',
+                'nearest_point_2_unit', 'nearest_point_2_subunit', 'nearest_point_2_site',
+                'nearest_point_2_name', 'nearest_point_2_distance_m', 'nearest_point_2_campaigns',
+                'nearest_point_3_unit', 'nearest_point_3_subunit', 'nearest_point_3_site',
+                'nearest_point_3_name', 'nearest_point_3_distance_m', 'nearest_point_3_campaigns'
+            ]
+            
+            # Create DataFrame and ensure column order
+            flagged_df = pd.DataFrame(enhanced_flagged_rows)
+            
+            # Reorder columns according to desired order, only including columns that exist
+            existing_columns = [col for col in desired_columns if col in flagged_df.columns]
+            flagged_df = flagged_df[existing_columns]
+            
             flagged_df.to_csv(flagged_file, index=False)
 
         # Print summary statistics
@@ -212,7 +237,7 @@ def clean_coordinates(input_file, output_file, flagged_file, distance_threshold=
 
 def find_nearest_neighbors(flagged_rows, df_with_coords):
     """
-    For each flagged coordinate, find the nearest point from the entire dataset.
+    For each flagged coordinate, find the nearest point from the entire dataset using BallTree.
     
     Args:
         flagged_rows: List of flagged coordinate discrepancies
@@ -221,12 +246,23 @@ def find_nearest_neighbors(flagged_rows, df_with_coords):
     Returns:
         Enhanced flagged_rows with nearest neighbor information
     """
+    if not flagged_rows:
+        return flagged_rows
+    
+    # Prepare data for BallTree
+    # Convert lat/lon to radians for haversine distance calculation
+    coords = df_with_coords[['latitude', 'longitude']].values
+    coords_rad = np.radians(coords)
+    
+    # Build BallTree index (one-time cost)
+    logger.info("Building spatial index for nearest neighbor search...")
+    tree = BallTree(coords_rad, metric='haversine')
+    
     enhanced_flagged_rows = []
     
     for flagged_point in flagged_rows:
         enhanced_point = flagged_point.copy()
-        
-        # Extract all flagged coordinates for this point
+          # Extract all flagged coordinates for this point
         flagged_coords = []
         coord_idx = 1
         while f"coordinates_{coord_idx}" in flagged_point:
@@ -235,42 +271,101 @@ def find_nearest_neighbors(flagged_rows, df_with_coords):
             flagged_coords.append((lat, lon, coord_idx))
             coord_idx += 1
         
-        # For each flagged coordinate, find nearest neighbor
+        # Collect all nearest neighbor information first
+        nearest_neighbor_info = {}
+        
+        # For each flagged coordinate, find nearest neighbor using BallTree
         for lat, lon, idx in flagged_coords:
-            min_distance = float('inf')
-            nearest_point = None
+            # Convert query point to radians
+            query_point = np.radians([[lat, lon]])
             
-            # Check against all points in the dataset
-            for _, row in df_with_coords.iterrows():
+            # Find all nearest neighbors (we'll filter out same point group manually)
+            # Query more neighbors to account for filtering out same point group
+            k_neighbors = min(10, len(df_with_coords))  # Get up to 10 neighbors
+            distances, indices = tree.query(query_point, k=k_neighbors)
+            
+            # Convert distances back to meters (haversine returns distances in radians)
+            # Earth radius ≈ 6371 km
+            distances_m = distances[0] * 6371000  # Convert to meters
+            
+            # Find the first neighbor that's not from the same point group
+            nearest_point = None
+            min_distance = float('inf')
+            
+            for i, dist_m in enumerate(distances_m):
+                candidate_idx = indices[0][i]
+                candidate_row = df_with_coords.iloc[candidate_idx]
+                
                 # Skip if this is the same point group
-                if (row['unit'] == flagged_point['unit'] and 
-                    row['subunit'] == flagged_point['subunit'] and
-                    row['site'] == flagged_point['site'] and
-                    row['point_name'] == flagged_point['point_name']):
+                if (candidate_row['unit'] == flagged_point['unit'] and 
+                    candidate_row['subunit'] == flagged_point['subunit'] and
+                    candidate_row['site'] == flagged_point['site'] and
+                    candidate_row['point_name'] == flagged_point['point_name']):
                     continue
                 
-                distance = calculate_distance(lat, lon, row['latitude'], row['longitude'])
-                if distance < min_distance:
-                    min_distance = distance
-                    nearest_point = row
+                # Found our nearest neighbor
+                nearest_point = candidate_row
+                min_distance = dist_m
+                break
             
             if nearest_point is not None:
-                # Add nearest neighbor info for this coordinate
-                enhanced_point[f"nearest_point_{idx}_unit"] = nearest_point['unit']
-                enhanced_point[f"nearest_point_{idx}_subunit"] = nearest_point['subunit']
-                enhanced_point[f"nearest_point_{idx}_site"] = nearest_point['site']
-                enhanced_point[f"nearest_point_{idx}_name"] = nearest_point['point_name']
-                enhanced_point[f"nearest_point_{idx}_distance_m"] = round(min_distance, 1)
-                  # Find all campaigns for this nearest point
+                # Store nearest neighbor info for this coordinate (don't add to enhanced_point yet)
+                nearest_neighbor_info[f"nearest_point_{idx}_unit"] = nearest_point['unit']
+                nearest_neighbor_info[f"nearest_point_{idx}_subunit"] = nearest_point['subunit']
+                nearest_neighbor_info[f"nearest_point_{idx}_site"] = nearest_point['site']
+                nearest_neighbor_info[f"nearest_point_{idx}_name"] = nearest_point['point_name']
+                nearest_neighbor_info[f"nearest_point_{idx}_distance_m"] = round(min_distance, 1)
+                
+                # Find all campaigns for this nearest point
                 nearest_campaigns = df_with_coords[
                     (df_with_coords['unit'] == nearest_point['unit']) &
                     (df_with_coords['subunit'] == nearest_point['subunit']) &
                     (df_with_coords['site'] == nearest_point['site']) &
                     (df_with_coords['point_name'] == nearest_point['point_name'])
                 ]['campaign'].unique()
-                enhanced_point[f"nearest_point_{idx}_campaigns"] = ';'.join(nearest_campaigns)
+                nearest_neighbor_info[f"nearest_point_{idx}_campaigns"] = ';'.join(nearest_campaigns)        # Create properly ordered enhanced point following the desired column order:
+        # 1-9, 24, 10, 11, 25, 12-23, 26-31
+        ordered_point = {}
         
-        enhanced_flagged_rows.append(enhanced_point)
+        # Columns 1-9: basic info + coordinates_1, coordinates_2
+        basic_cols = ['unit', 'subunit', 'site', 'point_name', 'max_distance_meters', 
+                      'coordinate_count', 'row_count', 'coordinates_1', 'coordinates_2']
+        for col in basic_cols:
+            if col in flagged_point:
+                ordered_point[col] = flagged_point[col]
+        
+        # Position 10 (originally column 24): coordinates_3 (if exists)
+        if 'coordinates_3' in flagged_point:
+            ordered_point['coordinates_3'] = flagged_point['coordinates_3']
+        
+        # Positions 11-12 (originally columns 10-11): campaigns_1, campaigns_2
+        if 'campaigns_1' in flagged_point:
+            ordered_point['campaigns_1'] = flagged_point['campaigns_1']
+        if 'campaigns_2' in flagged_point:
+            ordered_point['campaigns_2'] = flagged_point['campaigns_2']
+        
+        # Position 13 (originally column 25): campaigns_3 (if exists)
+        if 'campaigns_3' in flagged_point:
+            ordered_point['campaigns_3'] = flagged_point['campaigns_3']
+        
+        # Positions 14-25 (originally columns 12-23): nearest_point_1_* and nearest_point_2_* fields
+        nearest_1_cols = ['nearest_point_1_unit', 'nearest_point_1_subunit', 'nearest_point_1_site',
+                         'nearest_point_1_name', 'nearest_point_1_distance_m', 'nearest_point_1_campaigns']
+        nearest_2_cols = ['nearest_point_2_unit', 'nearest_point_2_subunit', 'nearest_point_2_site',
+                         'nearest_point_2_name', 'nearest_point_2_distance_m', 'nearest_point_2_campaigns']
+        
+        for col in nearest_1_cols + nearest_2_cols:
+            if col in nearest_neighbor_info:
+                ordered_point[col] = nearest_neighbor_info[col]
+        
+        # Positions 26-31 (originally columns 26-31): nearest_point_3_* fields (if exists)
+        nearest_3_cols = ['nearest_point_3_unit', 'nearest_point_3_subunit', 'nearest_point_3_site',
+                         'nearest_point_3_name', 'nearest_point_3_distance_m', 'nearest_point_3_campaigns']
+        for col in nearest_3_cols:
+            if col in nearest_neighbor_info:
+                ordered_point[col] = nearest_neighbor_info[col]
+        
+        enhanced_flagged_rows.append(ordered_point)
     
     return enhanced_flagged_rows
 
