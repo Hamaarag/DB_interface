@@ -249,9 +249,18 @@ def find_nearest_neighbors(flagged_rows, df_with_coords):
     if not flagged_rows:
         return flagged_rows
     
-    # Prepare data for BallTree
+    # Create distinct combinations of sampling point and coordinates for BallTree
+    # This avoids duplicates from multiple observations at the same point with same coordinates
+    logger.info("Creating distinct point-coordinate combinations for spatial index...")
+    distinct_points = df_with_coords.groupby(['unit', 'subunit', 'site', 'point_name', 'latitude', 'longitude']).agg({
+        'campaign': lambda x: ';'.join(sorted(x.unique()))
+    }).reset_index()
+    
+    logger.info(f"Reduced from {len(df_with_coords)} observations to {len(distinct_points)} distinct point-coordinate combinations")
+    
+    # Prepare data for BallTree using distinct points only
     # Convert lat/lon to radians for haversine distance calculation
-    coords = df_with_coords[['latitude', 'longitude']].values
+    coords = distinct_points[['latitude', 'longitude']].values
     coords_rad = np.radians(coords)
     
     # Build BallTree index (one-time cost)
@@ -272,38 +281,40 @@ def find_nearest_neighbors(flagged_rows, df_with_coords):
             coord_idx += 1
         
         # Collect all nearest neighbor information first
-        nearest_neighbor_info = {}
-        
-        # For each flagged coordinate, find nearest neighbor using BallTree
+        nearest_neighbor_info = {}        # For each flagged coordinate, find nearest neighbor using BallTree
         for lat, lon, idx in flagged_coords:
             # Convert query point to radians
             query_point = np.radians([[lat, lon]])
-            
-            # Find all nearest neighbors (we'll filter out same point group manually)
-            # Query more neighbors to account for filtering out same point group
-            k_neighbors = min(10, len(df_with_coords))  # Get up to 10 neighbors
+              # Find all nearest neighbors (we'll only filter out the exact same point-coordinate combination)
+            k_neighbors = min(10, len(distinct_points))  # Get up to 10 neighbors
             distances, indices = tree.query(query_point, k=k_neighbors)
             
             # Convert distances back to meters (haversine returns distances in radians)
             # Earth radius ≈ 6371 km
             distances_m = distances[0] * 6371000  # Convert to meters
             
-            # Find the first neighbor that's not from the same point group
+            # Find the first neighbor that's not the exact same point-coordinate combination
             nearest_point = None
             min_distance = float('inf')
             
             for i, dist_m in enumerate(distances_m):
                 candidate_idx = indices[0][i]
-                candidate_row = df_with_coords.iloc[candidate_idx]
+                candidate_row = distinct_points.iloc[candidate_idx]
                 
-                # Skip if this is the same point group
+                # Skip ONLY if this is the exact same point-coordinate combination
+                # (same point name AND same coordinates)
                 if (candidate_row['unit'] == flagged_point['unit'] and 
                     candidate_row['subunit'] == flagged_point['subunit'] and
                     candidate_row['site'] == flagged_point['site'] and
-                    candidate_row['point_name'] == flagged_point['point_name']):
+                    candidate_row['point_name'] == flagged_point['point_name'] and
+                    abs(candidate_row['latitude'] - lat) < 1e-6 and
+                    abs(candidate_row['longitude'] - lon) < 1e-6):
                     continue
                 
-                # Found our nearest neighbor
+                # Accept all other combinations:
+                # - Other coordinates from the same point group
+                # - Same coordinates but different point names
+                # - Different point groups with different coordinates
                 nearest_point = candidate_row
                 min_distance = dist_m
                 break
@@ -316,14 +327,8 @@ def find_nearest_neighbors(flagged_rows, df_with_coords):
                 nearest_neighbor_info[f"nearest_point_{idx}_name"] = nearest_point['point_name']
                 nearest_neighbor_info[f"nearest_point_{idx}_distance_m"] = round(min_distance, 1)
                 
-                # Find all campaigns for this nearest point
-                nearest_campaigns = df_with_coords[
-                    (df_with_coords['unit'] == nearest_point['unit']) &
-                    (df_with_coords['subunit'] == nearest_point['subunit']) &
-                    (df_with_coords['site'] == nearest_point['site']) &
-                    (df_with_coords['point_name'] == nearest_point['point_name'])
-                ]['campaign'].unique()
-                nearest_neighbor_info[f"nearest_point_{idx}_campaigns"] = ';'.join(nearest_campaigns)        # Create properly ordered enhanced point following the desired column order:
+                # Use the aggregated campaigns from distinct_points
+                nearest_neighbor_info[f"nearest_point_{idx}_campaigns"] = nearest_point['campaign']# Create properly ordered enhanced point following the desired column order:
         # 1-9, 24, 10, 11, 25, 12-23, 26-31
         ordered_point = {}
         
