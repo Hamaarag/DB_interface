@@ -145,15 +145,16 @@ def clean_coordinates(input_file, output_file, flagged_file, distance_threshold=
                         flagged_info[f"coordinates_{idx+1}"] = (
                             f"{coord_row['latitude']},{coord_row['longitude']}"
                         )
-                    
-                    # Then add all campaign details
+                      # Then add all year details (2-digit format)
                     for idx, (_, coord_row) in enumerate(unique_coords.iterrows()):
-                        # Find campaigns using these coordinates
-                        campaigns = group_df[
+                        # Find years using these coordinates
+                        years = group_df[
                             (group_df["latitude"] == coord_row["latitude"])
                             & (group_df["longitude"] == coord_row["longitude"])
-                        ]["campaign"].unique()
-                        flagged_info[f"campaigns_{idx+1}"] = ";".join(campaigns)
+                        ]["year"].unique()
+                        # Convert to 2-digit format and sort
+                        years_2digit = [f"{int(year) % 100:02d}" for year in years if pd.notna(year)]
+                        flagged_info[f"years_{idx+1}"] = ";".join(sorted(years_2digit))
 
                     flagged_rows.append(flagged_info)
                     cleaning_stats["flagged_for_review"] += len(group_df)
@@ -174,20 +175,19 @@ def clean_coordinates(input_file, output_file, flagged_file, distance_threshold=
             enhanced_flagged_rows = find_nearest_neighbors(flagged_rows, df_with_coords)
             
             logger.info(f"Writing flagged discrepancies to {flagged_file}")
-            
-            # Create DataFrame with explicit column ordering
+              # Create DataFrame with explicit column ordering
             desired_columns = [
                 'unit', 'subunit', 'site', 'point_name', 'max_distance_meters', 
                 'coordinate_count', 'row_count', 'coordinates_1', 'coordinates_2',
                 'coordinates_3', 
-                'campaigns_1', 'campaigns_2',
-                'campaigns_3',  
+                'years_1', 'years_2',
+                'years_3',  
                 'nearest_point_1_unit', 'nearest_point_1_subunit', 'nearest_point_1_site',
-                'nearest_point_1_name', 'nearest_point_1_distance_m', 'nearest_point_1_campaigns',
+                'nearest_point_1_name', 'nearest_point_1_distance_m', 'nearest_point_1_years',
                 'nearest_point_2_unit', 'nearest_point_2_subunit', 'nearest_point_2_site',
-                'nearest_point_2_name', 'nearest_point_2_distance_m', 'nearest_point_2_campaigns',
+                'nearest_point_2_name', 'nearest_point_2_distance_m', 'nearest_point_2_years',
                 'nearest_point_3_unit', 'nearest_point_3_subunit', 'nearest_point_3_site',
-                'nearest_point_3_name', 'nearest_point_3_distance_m', 'nearest_point_3_campaigns'
+                'nearest_point_3_name', 'nearest_point_3_distance_m', 'nearest_point_3_years'
             ]
             
             # Create DataFrame and ensure column order
@@ -248,12 +248,11 @@ def find_nearest_neighbors(flagged_rows, df_with_coords):
     """
     if not flagged_rows:
         return flagged_rows
-    
-    # Create distinct combinations of sampling point and coordinates for BallTree
+      # Create distinct combinations of sampling point and coordinates for BallTree
     # This avoids duplicates from multiple observations at the same point with same coordinates
     logger.info("Creating distinct point-coordinate combinations for spatial index...")
     distinct_points = df_with_coords.groupby(['unit', 'subunit', 'site', 'point_name', 'latitude', 'longitude']).agg({
-        'campaign': lambda x: ';'.join(sorted(x.unique()))
+        'year': lambda x: ';'.join([f"{int(year) % 100:02d}" for year in sorted(x.unique()) if pd.notna(year)])
     }).reset_index()
     
     logger.info(f"Reduced from {len(df_with_coords)} observations to {len(distinct_points)} distinct point-coordinate combinations")
@@ -326,9 +325,8 @@ def find_nearest_neighbors(flagged_rows, df_with_coords):
                 nearest_neighbor_info[f"nearest_point_{idx}_site"] = nearest_point['site']
                 nearest_neighbor_info[f"nearest_point_{idx}_name"] = nearest_point['point_name']
                 nearest_neighbor_info[f"nearest_point_{idx}_distance_m"] = round(min_distance, 1)
-                
-                # Use the aggregated campaigns from distinct_points
-                nearest_neighbor_info[f"nearest_point_{idx}_campaigns"] = nearest_point['campaign']# Create properly ordered enhanced point following the desired column order:
+                  # Use the aggregated years from distinct_points
+                nearest_neighbor_info[f"nearest_point_{idx}_years"] = nearest_point['year']# Create properly ordered enhanced point following the desired column order:
         # 1-9, 24, 10, 11, 25, 12-23, 26-31
         ordered_point = {}
         
@@ -342,30 +340,28 @@ def find_nearest_neighbors(flagged_rows, df_with_coords):
         # Position 10 (originally column 24): coordinates_3 (if exists)
         if 'coordinates_3' in flagged_point:
             ordered_point['coordinates_3'] = flagged_point['coordinates_3']
+          # Positions 11-12 (originally columns 10-11): years_1, years_2
+        if 'years_1' in flagged_point:
+            ordered_point['years_1'] = flagged_point['years_1']
+        if 'years_2' in flagged_point:
+            ordered_point['years_2'] = flagged_point['years_2']
         
-        # Positions 11-12 (originally columns 10-11): campaigns_1, campaigns_2
-        if 'campaigns_1' in flagged_point:
-            ordered_point['campaigns_1'] = flagged_point['campaigns_1']
-        if 'campaigns_2' in flagged_point:
-            ordered_point['campaigns_2'] = flagged_point['campaigns_2']
-        
-        # Position 13 (originally column 25): campaigns_3 (if exists)
-        if 'campaigns_3' in flagged_point:
-            ordered_point['campaigns_3'] = flagged_point['campaigns_3']
+        # Position 13 (originally column 25): years_3 (if exists)
+        if 'years_3' in flagged_point:
+            ordered_point['years_3'] = flagged_point['years_3']
         
         # Positions 14-25 (originally columns 12-23): nearest_point_1_* and nearest_point_2_* fields
         nearest_1_cols = ['nearest_point_1_unit', 'nearest_point_1_subunit', 'nearest_point_1_site',
-                         'nearest_point_1_name', 'nearest_point_1_distance_m', 'nearest_point_1_campaigns']
+                         'nearest_point_1_name', 'nearest_point_1_distance_m', 'nearest_point_1_years']
         nearest_2_cols = ['nearest_point_2_unit', 'nearest_point_2_subunit', 'nearest_point_2_site',
-                         'nearest_point_2_name', 'nearest_point_2_distance_m', 'nearest_point_2_campaigns']
+                         'nearest_point_2_name', 'nearest_point_2_distance_m', 'nearest_point_2_years']
         
         for col in nearest_1_cols + nearest_2_cols:
             if col in nearest_neighbor_info:
                 ordered_point[col] = nearest_neighbor_info[col]
-        
-        # Positions 26-31 (originally columns 26-31): nearest_point_3_* fields (if exists)
+          # Positions 26-31 (originally columns 26-31): nearest_point_3_* fields (if exists)
         nearest_3_cols = ['nearest_point_3_unit', 'nearest_point_3_subunit', 'nearest_point_3_site',
-                         'nearest_point_3_name', 'nearest_point_3_distance_m', 'nearest_point_3_campaigns']
+                         'nearest_point_3_name', 'nearest_point_3_distance_m', 'nearest_point_3_years']
         for col in nearest_3_cols:
             if col in nearest_neighbor_info:
                 ordered_point[col] = nearest_neighbor_info[col]
