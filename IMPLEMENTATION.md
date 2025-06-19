@@ -5,7 +5,7 @@
 ### Prerequisites
 
 - PostgreSQL 12+
-- Python 3.6+
+- Python 3.10
 - R 4.4+ with `renv` package
 - Required Python packages: pandas>=1.3.0, psycopg2>=2.9.0, python-dotenv>=0.19.0, uuid>=1.30
   
@@ -24,9 +24,27 @@
 
 ### Configuration
 
-1. Install required Python packages:
+1. Set up the Python conda environment:
+   
+   **Option 1**: Run the provided setup script:
    ```bash
-   pip install pandas>=1.3.0 psycopg2>=2.9.0 python-dotenv>=0.19.0 uuid>=1.30
+   # For Windows cmd.exe
+   setup_environment.bat
+   
+   # For PowerShell
+   .\setup_environment.ps1
+   ```
+   
+   **Option 2**: Set up manually:
+   ```bash
+   # Create conda environment
+   conda create --prefix c:\my_python_envs\hamaarag_env python=3.10 -y
+   
+   # Activate conda environment
+   conda activate c:\my_python_envs\hamaarag_env
+   
+   # Install dependencies
+   pip install -r requirements.txt
    ```
 
 2. Configure database connection by creating a `.env` file in the project root with the following content:
@@ -37,13 +55,75 @@
    DB_USER=your_username
    DB_PASSWORD=your_password
    ```
-   
-   > **Note**: The `.env` file is excluded from git by `.gitignore` to prevent sensitive credentials from being committed.
+     > **Note**: The `.env` file is excluded from git by `.gitignore` to prevent sensitive credentials from being committed.
 
-2. Enable R environment with `renv`:
+3. Enable R environment with `renv`:
    ```R
    renv::restore()
    ```
+
+## Data Preparation for Loading
+
+Before loading monitoring data into the database, the raw observation data must be cleaned and validated to ensure data quality and prevent constraint violations. This process involves two sequential steps:
+
+### Step 1: Coordinate Cleaning
+
+Raw monitoring data often contains coordinate discrepancies where the same sampling point appears with different GPS coordinates across multiple observation records. This can occur due to GPS measurement errors, device differences, or manual recording variations.
+
+The `clean_coordinates.py` script resolves these discrepancies:
+
+```bash
+python src/clean_coordinates.py --input data/raw_observations.csv --output data/observations_cleaned.csv --flagged data/observations_flagged_coordinates.csv --distance-threshold 100
+```
+
+**Process:**
+- Groups observations by sampling point (unit/subunit/site/point_name)
+- Identifies coordinate discrepancies within each point group
+- **Auto-corrects** points with coordinates within 100m (configurable) by using the most recent coordinates
+- **Flags for manual review** points with larger discrepancies (>100m)
+- Outputs cleaned data and a flagged coordinates report for manual curation
+
+**Output files:**
+- `*_cleaned.csv`: Cleaned observation data with resolved coordinate discrepancies
+- `*_flagged_coordinates.csv`: Report of coordinate conflicts requiring manual review (includes nearest neighbor analysis)
+
+### Step 2: Coordinate Conflict Detection
+
+The database schema enforces a `unique_coordinates` constraint, meaning no two sampling points can share identical coordinates. After coordinate cleaning, different point names might still share the same coordinates, which would cause database loading failures.
+
+The `clean_multiple_point_names_per_location.py` script detects these conflicts:
+
+```bash
+python src/clean_multiple_point_names_per_location.py --input data/observations_cleaned.csv --output data/coordinate_conflicts.csv --coordinate-precision 1e-5
+```
+
+**Process:**
+- Groups cleaned data by coordinates (with configurable precision tolerance)
+- Identifies locations where multiple different point names share the same coordinates  
+- **Suggests automatic fixes** for conflicts within the same unit/site (keeps most recent point name)
+- **Flags for manual review** conflicts across different units/sites
+- Outputs a detailed conflict report
+
+**Output file:**
+- `*_coordinate_conflicts.csv`: Report of coordinate conflicts with suggested resolutions
+
+**Conflict report includes:**
+- `coordinates`: The shared coordinate pair
+- `conflict_count`: Number of different points at this location
+- `units`, `sites`, `point_names`: Details of conflicting points
+- `years`: Years when each point was observed
+- `suggested_fix`: Recommended resolution (automatic or manual review)
+
+### Step 3: Manual Data Curation
+
+Before proceeding to database loading:
+
+1. **Review flagged coordinates** (`*_flagged_coordinates.csv`) and resolve large coordinate discrepancies
+2. **Review coordinate conflicts** (`*_coordinate_conflicts.csv`) and implement suggested fixes or manual resolutions
+3. **Update source data** or create coordinate override files as needed
+4. **Re-run both cleaning scripts** until no conflicts remain
+
+**Important:** Database loading will fail if coordinate conflicts remain unresolved due to the `unique_coordinates` constraint.
 
 ## Data Loading Process
 
@@ -80,7 +160,42 @@ This script:
 The monitoring data is loaded from a single source CSV file (`Abreed_and_non_breed.csv`):
 
 ```bash
-python src/load_monitoring_data.py --config src/config_sample.json
+python src/load_monitoring_data.py --config src/config.json
+```
+
+The config.json file supports the following parameters:
+- `files.source_file`: Path to the CSV file containing monitoring data
+- `mappings`: Transformation mappings for various field values
+- `taxon_version.version_year`: (Optional) Year of the taxonomy version to use for species mapping
+
+Example config.json:
+```json
+{
+  "files": {
+    "source_file": "./data/Abreed_and_non_breed.csv"
+  },
+  "mappings": {
+    "species_codes": {
+      "source_column": "species_code",
+      "target_table": "taxon_version",
+      "target_column": "species_code",
+      "filter": {
+        "is_current": true
+      }
+    },
+    "breeding_status": {
+      "breeding": true,
+      "non-breeding": false
+    },
+    "interaction": {
+      "yes": true,
+      "no": false
+    }
+  },
+  "taxon_version": {
+    "version_year": 2023
+  }
+}
 ```
 
 This script:

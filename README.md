@@ -151,3 +151,41 @@ The `first_five_mins` boolean field in species observations enables standardized
 * **Testing framework**: Establish data and schema validation procedures with versioned test cases
 * **Expanded taxonomic coverage**: Add schemas and data for plants, arthropods, reptiles, and mammals
 
+## Coordinate Cleaning Workflow
+
+Before loading monitoring data, you should clean coordinate discrepancies using the coordinate cleaning script:
+
+### Step 1: Clean Coordinates
+```bash
+python src/clean_coordinates.py --input data/your_monitoring_data.csv --output data/cleaned_monitoring_data.csv
+```
+
+**What this does:**
+- Identifies monitoring points with the same name but different GPS coordinates
+- Auto-corrects coordinates within 100m using the most recent campaign data
+- Flags points with discrepancies >100m for manual review
+
+**Options:**
+- `--distance-threshold`: Change the auto-correction threshold (default: 100 meters)
+- `--flagged`: Specify output file for flagged discrepancies
+
+### Step 2: Manual Review (if needed)
+If points are flagged for manual review:
+1. Review the `*_flagged_coordinates.csv` file
+2. Fix the source data or determine which coordinates are correct
+3. Re-run the cleaning script until no flags remain
+
+### Step 3: Load Cleaned Data
+```bash
+python src/load_monitoring_data.py --config src/config.json --input data/cleaned_monitoring_data.csv
+```
+
+### Example Complete Workflow
+```bash
+# Clean coordinates
+python src/clean_coordinates.py --input data/monitoring_data.csv
+
+# If no manual curation needed, proceed with loading
+python src/load_monitoring_data.py --config src/config.json --input data/monitoring_data_cleaned.csv
+```
+
