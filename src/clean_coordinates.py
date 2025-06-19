@@ -482,7 +482,7 @@ def main():
     parser.add_argument("--input", required=True, help="Input CSV file path")
     parser.add_argument(
         "--output",
-        help="Output cleaned CSV file path (default: adds '_cleaned' suffix)",
+        help="Output cleaned CSV file path (default: adds '_cleaned_mult_coord' suffix)",
     )
     parser.add_argument(
         "--flagged",
@@ -499,7 +499,7 @@ def main():
 
     # Generate default output filenames if not provided
     input_base = os.path.splitext(args.input)[0]
-    output_file = args.output or f"{input_base}_cleaned.csv"
+    output_file = args.output or f"{input_base}_cleaned_mult_coord.csv"
     flagged_file = args.flagged or f"{input_base}_flagged_coordinates.csv"
 
     try:
