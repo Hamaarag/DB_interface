@@ -151,11 +151,11 @@ The `first_five_mins` boolean field in species observations enables standardized
 * **Testing framework**: Establish data and schema validation procedures with versioned test cases
 * **Expanded taxonomic coverage**: Add schemas and data for plants, arthropods, reptiles, and mammals
 
-## Coordinate Cleaning Workflow
+## Coordinate and Point Name Cleaning Workflow
 
-Before loading monitoring data, you should clean coordinate discrepancies using the coordinate cleaning script:
+Before loading monitoring data, you should clean coordinate discrepancies and resolve point name conflicts using a two-step cleaning process:
 
-### Step 1: Clean Coordinates
+### Step 1: Clean Coordinate Discrepancies
 ```bash
 python src/clean_coordinates.py --input data/your_monitoring_data.csv --output data/cleaned_monitoring_data.csv
 ```
@@ -163,29 +163,76 @@ python src/clean_coordinates.py --input data/your_monitoring_data.csv --output d
 **What this does:**
 - Identifies monitoring points with the same name but different GPS coordinates
 - Auto-corrects coordinates within 100m using the most recent campaign data
-- Flags points with discrepancies >100m for manual review
+- **Excludes** points with discrepancies >100m from the cleaned output (flagged for manual review)
+- Preserves original coordinates as `orig_lon` and `orig_lat` fields
+
+**Important:** Flagged point groups are completely excluded from the cleaned output and must be manually resolved before proceeding.
 
 **Options:**
 - `--distance-threshold`: Change the auto-correction threshold (default: 100 meters)
 - `--flagged`: Specify output file for flagged discrepancies
 
-### Step 2: Manual Review (if needed)
-If points are flagged for manual review:
-1. Review the `*_flagged_coordinates.csv` file
-2. Fix the source data or determine which coordinates are correct
-3. Re-run the cleaning script until no flags remain
-
-### Step 3: Load Cleaned Data
+### Step 2: Resolve Point Name Conflicts
 ```bash
-python src/load_monitoring_data.py --config src/config.json --input data/cleaned_monitoring_data.csv
+python src/clean_multiple_point_names_per_location.py --input data/cleaned_monitoring_data.csv
+```
+
+**What this does:**
+- Detects cases where different point names share identical coordinates (violates database unique constraint)
+- **Automatically fixes** conflicts within the same unit and site (keeps most recent point name)
+- **Flags for manual review** conflicts across different units or sites
+
+**Outputs three files:**
+- `*_point_names_cleaned.csv`: Data ready for database loading
+- `*_point_name_corrections.md`: Detailed log of automatic corrections made
+- `*_coordinate_conflicts.csv`: Conflicts requiring manual resolution
+
+**Options:**
+- `--coordinate-precision`: Coordinate matching tolerance (default: 1e-5 degrees)
+
+### Step 3: Manual Review (if needed)
+
+**For coordinate discrepancies:**
+1. Review the `*_flagged_coordinates.csv` file with nearest neighbor analysis
+2. Fix the source data or determine which coordinates are correct
+3. Re-run Step 1 until no flags remain
+
+**For point name conflicts:**
+1. Review the `*_coordinate_conflicts.csv` file for cross-unit/site conflicts
+2. Decide whether to:
+   - Merge points (update source data to use consistent names)
+   - Separate points (adjust coordinates to make them distinct)
+   - Consolidate locations (combine different monitoring efforts)
+3. Re-run Step 2 until no conflicts remain
+
+### Step 4: Load Cleaned Data
+```bash
+python src/load_monitoring_data.py --config src/config.json --input data/your_monitoring_data_point_names_cleaned.csv
 ```
 
 ### Example Complete Workflow
 ```bash
-# Clean coordinates
-python src/clean_coordinates.py --input data/monitoring_data.csv
+# Step 1: Clean coordinate discrepancies
+python src/clean_coordinates.py --input data/raw_monitoring_data.csv
 
-# If no manual curation needed, proceed with loading
-python src/load_monitoring_data.py --config src/config.json --input data/monitoring_data_cleaned.csv
+# Step 2: Resolve point name conflicts
+python src/clean_multiple_point_names_per_location.py --input data/raw_monitoring_data_cleaned.csv
+
+# Review outputs:
+# - data/raw_monitoring_data_cleaned_point_names_cleaned.csv (ready for loading)
+# - data/raw_monitoring_data_cleaned_point_name_corrections.md (audit trail)
+# - data/raw_monitoring_data_cleaned_coordinate_conflicts.csv (manual review if any)
+
+# Step 3: Load cleaned data (if no manual conflicts remain)
+python src/load_monitoring_data.py --config src/config.json --input data/raw_monitoring_data_cleaned_point_names_cleaned.csv
 ```
+
+### Data Quality Assurance
+
+This two-step process ensures:
+- **Spatial integrity**: No duplicate coordinates in the database
+- **Temporal consistency**: Most recent coordinates are preferred for auto-corrections
+- **Audit trail**: Full documentation of all changes made
+- **Conservative approach**: Only safe, same-unit conflicts are auto-resolved
+- **Database compatibility**: Prevents unique constraint violations during loading
 
