@@ -37,7 +37,8 @@ INSERT INTO weather_description_lookup (weather_code, weather_description) VALUE
   ('clear_light.wind', 'Clear with light wind'),
   ('clear_hot', 'Clear and hot'),
   ('light.rain', 'Light rain'),
-  ('nice_no.wind', 'Nice without wind');
+  ('nice_no.wind', 'Nice without wind'),
+  ('windy.rain_bursts', 'Windy with rain bursts');
 
 -- Monitoring Unit Table
 CREATE TABLE monitoring_unit (
@@ -101,13 +102,15 @@ CREATE TABLE monitoring_event (
   precipitation SMALLINT, -- Using ordinal scale from protocol
   disturbances TEXT,
   monitors_name TEXT,
+  is_pilot BOOLEAN DEFAULT FALSE, -- Whether this is a pilot study event
   notes TEXT,
   
   CONSTRAINT unique_event UNIQUE (campaign_id, point_id, event_date)
 );
 
 -- Species Observation Table
-CREATE TABLE species_observation (  observation_id UUID PRIMARY KEY,
+CREATE TABLE species_observation (
+  observation_id UUID PRIMARY KEY,
   event_id UUID REFERENCES monitoring_event(event_id) ON DELETE RESTRICT,
   taxon_id UUID REFERENCES taxon_version(taxon_version_id) ON DELETE RESTRICT,
   first_five_mins BOOLEAN NOT NULL, -- TRUE if observation was in first five minutes (formerly 'A'), FALSE otherwise (formerly 'B')

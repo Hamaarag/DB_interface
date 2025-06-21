@@ -93,6 +93,7 @@ Table monitoring_event {
   precipitation smallint
   disturbances text
   monitors_name text
+  is_pilot boolean [default: false, note: 'Whether this is a pilot study event']
   notes text
 
   Indexes {

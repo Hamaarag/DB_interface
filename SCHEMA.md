@@ -46,18 +46,18 @@ Represents a specific version of a taxon at a point in time.
 | Column | Type | Description |
 |--------|------|-------------|
 | taxon_version_id | UUID | Primary key, unique ID for a specific taxon version |
-| taxon_entity_id | UUID | Reference to parent taxon_entity [ON DELETE RESTRICT] |
-| version_year | INTEGER | Year of this taxonomic version |
-| species_code | VARCHAR(10) | Code representing the species (typically from an external taxonomy source) |
-| scientific_name | TEXT | Scientific name |
-| primary_com_name | TEXT | Primary common name |
+| taxon_entity_id | UUID | Reference to parent taxon_entity [ON DELETE RESTRICT] (NOT NULL) |
+| version_year | INTEGER | Year of this taxonomic version (NOT NULL) |
+| species_code | VARCHAR(10) | Code representing the species (typically from an external taxonomy source) (NOT NULL) |
+| scientific_name | TEXT | Scientific name (NOT NULL) |
+| primary_com_name | TEXT | Primary common name (NOT NULL) |
 | hebrew_name | TEXT | Hebrew name (optional) |
 | order_name | TEXT | Taxonomic order name |
 | family_name | TEXT | Taxonomic family name |
-| category | TEXT | Taxonomic category |
+| category | TEXT | Taxonomic category (NOT NULL) |
 | taxon_order | INTEGER | Order for display purposes |
 | report_as | UUID | ID of a different taxon to report this as [ON DELETE SET NULL] |
-| is_current | BOOLEAN | Whether this is the current version |
+| is_current | BOOLEAN | Whether this is the current version (DEFAULT FALSE) |
 
 **Constraints**: UNIQUE (species_code, version_year)
 
@@ -71,7 +71,7 @@ Records changes between taxon versions.
 | from_version_id | UUID | Previous version involved in the change [ON DELETE RESTRICT] |
 | to_version_id | UUID | New version resulting from the change [ON DELETE RESTRICT] |
 | change_type | change_type_enum | Type of change (split, lump, rename, etc.) |
-| inherits_relations | BOOLEAN | If true, new version inherits traits/conservation statuses from old version |
+| inherits_relations | BOOLEAN | If true, new version inherits traits/conservation statuses from old version (DEFAULT FALSE) |
 | notes | TEXT | Notes explaining the change |
 
 ### species_traits
@@ -106,9 +106,20 @@ Lookup table for conservation status descriptions.
 | Column | Type | Description |
 |--------|------|-------------|
 | status_code | conservation_status_enum | Primary key, standardized conservation status code |
-| status_description | TEXT | Full description (e.g., Critically Endangered) |
+| status_description | TEXT | Full description (e.g., Critically Endangered) (NOT NULL, UNIQUE) |
 
-**Constraints**: status_description UNIQUE
+**Pre-populated values**:
+- `LC`: Least concern
+- `NE`: Not evaluated
+- `NT`: Near threatened
+- `EN`: Endangered
+- `VU`: Vulnerable
+- `CR`: Critically endangered
+- `DD`: Data deficient
+- `RE_AS_BREED`: Regionally extinct as nesting
+- `RE`: Regionally extinct
+- `EW`: Extinct in the wild
+- `EX`: Extinct
 
 ### taxon_conservation_status
 
@@ -117,8 +128,8 @@ Links conservation statuses to taxa.
 | Column | Type | Description |
 |--------|------|-------------|
 | taxon_version_id | UUID | References taxon_version [ON DELETE CASCADE] |
-| conservation_scheme | TEXT | Scheme name (e.g., Global, IL_2018) |
-| conservation_code | conservation_status_enum | Code for the status |
+| conservation_scheme | TEXT | Scheme name (e.g., Global, IL_2018) (NOT NULL) |
+| conservation_code | conservation_status_enum | Code for the status (NOT NULL) |
 
 **Primary Key**: (taxon_version_id, conservation_scheme)
 
@@ -150,7 +161,7 @@ Represents the highest level of organization for monitoring.
 | Column | Type | Description |
 |--------|------|-------------|
 | unit_id | UUID | Primary key |
-| unit_name | TEXT | Name of the monitoring unit |
+| unit_name | TEXT | Name of the monitoring unit (NOT NULL) |
 | subunit_name | TEXT | Name of a subunit (optional) |
 | description | TEXT | Description of the unit |
 
@@ -162,7 +173,7 @@ Represents a site within a monitoring unit.
 |--------|------|-------------|
 | site_id | UUID | Primary key |
 | unit_id | UUID | Reference to monitoring_unit [ON DELETE RESTRICT] |
-| site_name | TEXT | Name of the site |
+| site_name | TEXT | Name of the site (NOT NULL) |
 | description | TEXT | Description of the site |
 
 **Constraints**: UNIQUE (unit_id, site_name)
@@ -176,9 +187,9 @@ Represents a specific point where observations are made.
 | point_id | UUID | Primary key |
 | unit_id | UUID | Reference to monitoring_unit [ON DELETE RESTRICT] |
 | site_id | UUID | Reference to monitoring_site [ON DELETE RESTRICT] |
-| point_name | TEXT | Name of the point |
-| longitude | NUMERIC(9,6) | Longitude coordinate |
-| latitude | NUMERIC(8,6) | Latitude coordinate |
+| point_name | TEXT | Name of the point (NOT NULL) |
+| longitude | NUMERIC(9,6) | Longitude coordinate (NOT NULL) |
+| latitude | NUMERIC(8,6) | Latitude coordinate (NOT NULL) |
 | habitat_type | habitat_type_enum | Type of habitat ('Basalt', 'Limestone', 'Slope', 'Wadi') |
 | agriculture | TEXT | Proximity to agriculture ("Near", "Far", NULL) |
 | settlements | TEXT | Proximity to settlements ("Near", "Far", NULL) |
@@ -197,9 +208,9 @@ Represents a monitoring campaign over a period of time.
 | Column | Type | Description |
 |--------|------|-------------|
 | campaign_id | UUID | Primary key |
-| campaign_code | TEXT | Unique code for the campaign |
-| start_year | INTEGER | Starting year of the campaign |
-| end_year | INTEGER | Ending year of the campaign |
+| campaign_code | TEXT | Unique code for the campaign (NOT NULL, UNIQUE) |
+| start_year | INTEGER | Starting year of the campaign (NOT NULL) |
+| end_year | INTEGER | Ending year of the campaign (NOT NULL) |
 | description | TEXT | Description of the campaign |
 
 **Constraints**: CHECK (start_year <= end_year)
@@ -211,7 +222,22 @@ Lookup table for standardized weather descriptions.
 | Column | Type | Description |
 |--------|------|-------------|
 | weather_code | TEXT | Primary key |
-| weather_description | TEXT | Human-readable weather description |
+| weather_description | TEXT | Human-readable weather description (NOT NULL) |
+
+**Pre-populated values**:
+- `cloudy`: Cloudy
+- `clear`: Clear  
+- `cool`: Cool
+- `cloudy_light.rain`: Cloudy with light rain
+- `clear_warm`: Clear and warm
+- `part.cloudy`: Partly cloudy
+- `cloudy_cool`: Cloudy and cool
+- `nice`: Nice
+- `light.clouds`: Light clouds
+- `clear_light.wind`: Clear with light wind
+- `clear_hot`: Clear and hot
+- `light.rain`: Light rain
+- `nice_no.wind`: Nice without wind
 
 ### monitoring_event
 
@@ -222,7 +248,7 @@ Represents a specific monitoring event.
 | event_id | UUID | Primary key |
 | campaign_id | UUID | Reference to monitoring_campaign [ON DELETE RESTRICT] |
 | point_id | UUID | Reference to monitoring_point [ON DELETE RESTRICT] |
-| event_date | DATE | Date of the event |
+| event_date | DATE | Date of the event (NOT NULL) |
 | start_time | TIME | Starting time of the event |
 | weather_code | TEXT | Reference to weather_description_lookup |
 | temperature | SMALLINT | Temperature rating (ordinal scale from protocol) |
@@ -231,6 +257,7 @@ Represents a specific monitoring event.
 | precipitation | SMALLINT | Precipitation rating (ordinal scale from protocol) |
 | disturbances | TEXT | Description of any disturbances |
 | monitors_name | TEXT | Name of the monitor(s) |
+| is_pilot | BOOLEAN | Whether this is a pilot study event (default FALSE) |
 | notes | TEXT | Additional notes |
 
 **Constraints**: UNIQUE (campaign_id, point_id, event_date)
@@ -244,12 +271,12 @@ Represents an observation of a species during a monitoring event.
 | observation_id | UUID | Primary key |
 | event_id | UUID | Reference to monitoring_event [ON DELETE RESTRICT] |
 | taxon_id | UUID | Reference to taxon_version [ON DELETE RESTRICT] |
-| first_five_mins | BOOLEAN | TRUE if observation was in first five minutes, FALSE otherwise |
-| radius_0_20 | INTEGER | Count within 0-20m radius |
-| radius_20_100 | INTEGER | Count within 20-100m radius |
-| radius_100_250 | INTEGER | Count within 100-250m radius |
-| radius_over_250 | INTEGER | Count beyond 250m radius |
-| count_under_250 | INTEGER | Generated column (sum of first three radius counts) |
+| first_five_mins | BOOLEAN | TRUE if observation was in first five minutes, FALSE otherwise (NOT NULL) |
+| radius_0_20 | INTEGER | Count within 0-20m radius (DEFAULT 0) |
+| radius_20_100 | INTEGER | Count within 20-100m radius (DEFAULT 0) |
+| radius_100_250 | INTEGER | Count within 100-250m radius (DEFAULT 0) |
+| radius_over_250 | INTEGER | Count beyond 250m radius (DEFAULT 0) |
+| count_under_250 | INTEGER | Generated column (GENERATED ALWAYS AS radius_0_20 + radius_20_100 + radius_100_250 STORED) |
 | is_interacting | BOOLEAN | Whether species was interacting with the sampling point |
 | notes | TEXT | Additional notes |
 
@@ -263,8 +290,8 @@ Documents breeding status of species at monitoring units.
 |--------|------|-------------|
 | relationship_id | UUID | Primary key |
 | unit_id | UUID | Reference to monitoring_unit [ON DELETE RESTRICT] |
-| taxon_id | UUID | Reference to taxon_entity [ON DELETE RESTRICT] |
-| is_breeding | BOOLEAN | Whether the species breeds in this unit |
+| taxon_id | UUID | Reference to taxon_version [ON DELETE RESTRICT] |
+| is_breeding | BOOLEAN | Whether the species breeds in this unit (NOT NULL) |
 | notes | TEXT | Additional notes |
 
 **Constraints**: UNIQUE (unit_id, taxon_id)
@@ -389,6 +416,6 @@ The database uses PostgreSQL ENUM types to enforce valid values for categorical 
 The taxonomy and monitoring modules are connected through:
 
 1. **species_observation.taxon_id** references **taxon_version.taxon_version_id**
-2. **species_breeding_relationship.taxon_id** references **taxon_entity.taxon_entity_id**
+2. **species_breeding_relationship.taxon_id** references **taxon_version.taxon_version_id**
 
 These connections enable tracking species observations over time and linking them to the appropriate taxonomic version.
