@@ -5,7 +5,8 @@ SELECT
   tv.scientific_name,
   tv.hebrew_name,
   tv.category,
-  tv.report_as,
+  -- Show species code instead of UUID for report_as
+  ra.species_code AS report_as,
 
   st.invasiveness,
   st.synanthrope,
@@ -27,6 +28,9 @@ SELECT
   icl.status_description      AS conservation_IL2018_description
 
 FROM taxon_version tv
+
+-- Join to get the species code for report_as UUID
+LEFT JOIN taxon_version ra ON ra.taxon_version_id = tv.report_as
 
 LEFT JOIN species_traits st ON st.taxon_version_id = tv.taxon_version_id
 LEFT JOIN presence_il p ON p.taxon_version_id = tv.taxon_version_id
@@ -58,7 +62,7 @@ GROUP BY
   tv.scientific_name,
   tv.hebrew_name,
   tv.category,
-  tv.report_as,
+  ra.species_code,
   st.invasiveness,
   st.synanthrope,
   st.breeding_il,
