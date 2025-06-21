@@ -113,7 +113,7 @@ CREATE TABLE species_observation (
   observation_id UUID PRIMARY KEY,
   event_id UUID REFERENCES monitoring_event(event_id) ON DELETE RESTRICT,
   taxon_id UUID REFERENCES taxon_version(taxon_version_id) ON DELETE RESTRICT,
-  first_five_mins BOOLEAN NOT NULL, -- TRUE if observation was in first five minutes (formerly 'A'), FALSE otherwise (formerly 'B')
+  first_five_mins BOOLEAN, -- TRUE if observation was in first five minutes (formerly 'A'), FALSE otherwise (formerly 'B'), NULL if unknown
   radius_0_20 INTEGER DEFAULT 0,     -- Count within 0-20m radius
   radius_20_100 INTEGER DEFAULT 0,   -- Count within 20-100m radius
   radius_100_250 INTEGER DEFAULT 0,  -- Count within 100-250m radius

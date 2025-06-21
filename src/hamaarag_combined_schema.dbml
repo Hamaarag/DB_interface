@@ -326,7 +326,7 @@ Table species_observation {
   observation_id uuid [pk]
   event_id uuid [ref: > monitoring_event.event_id, note: 'ON DELETE RESTRICT']
   taxon_id uuid [ref: > taxon_version.taxon_version_id, note: 'ON DELETE RESTRICT']
-  first_five_mins boolean [not null, note: 'TRUE if observation was in first five minutes, FALSE otherwise']
+  first_five_mins boolean [note: 'TRUE if observation was in first five minutes, FALSE otherwise, NULL if unknown']
   radius_0_20 integer [default: 0]
   radius_20_100 integer [default: 0]
   radius_100_250 integer [default: 0]

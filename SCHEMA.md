@@ -271,7 +271,7 @@ Represents an observation of a species during a monitoring event.
 | observation_id | UUID | Primary key |
 | event_id | UUID | Reference to monitoring_event [ON DELETE RESTRICT] |
 | taxon_id | UUID | Reference to taxon_version [ON DELETE RESTRICT] |
-| first_five_mins | BOOLEAN | TRUE if observation was in first five minutes, FALSE otherwise (NOT NULL) |
+| first_five_mins | BOOLEAN | TRUE if observation was in first five minutes, FALSE otherwise, NULL if unknown |
 | radius_0_20 | INTEGER | Count within 0-20m radius (DEFAULT 0) |
 | radius_20_100 | INTEGER | Count within 20-100m radius (DEFAULT 0) |
 | radius_100_250 | INTEGER | Count within 100-250m radius (DEFAULT 0) |
