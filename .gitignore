@@ -71,3 +71,6 @@ anaconda_projects/
 
 # vscode settings
 .vscode/
+
+# PDF files
+*.pdf
