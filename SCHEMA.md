@@ -81,7 +81,7 @@ Contains various traits for a taxon version.
 | Column | Type | Description |
 |--------|------|-------------|
 | taxon_version_id | UUID | Primary key, references taxon_version [ON DELETE CASCADE] |
-| invasiveness | invasiveness_enum | Whether the species is alien or native |
+| invasiveness | invasiveness_enum | Whether the species is alien invasive, native invasive (outbreaking) or neither |
 | synanthrope | BOOLEAN | Whether the species tends to live in human-modified environments |
 | breeding_il | BOOLEAN | Whether the species breeds in Israel |
 | associated_with_sampled_habitats | BOOLEAN | Whether species interacts with sampled habitats |
