@@ -1,7 +1,11 @@
 # Data Preparation Notes - Bird Data
-18/6/2025 Ron Chen  
+Ron Chen  
 
 ## Resolving multiple coordinates per point, using `clean_coordinates.py`
+
+**Date:** 2025-06-18  
+**Input file:** data/Abreed_and_non_breed_orig.csv  
+**Cleaned output file:** data/Abreed_and_non_breed_cleaned_mult_coord.csv  
 
 The following corrections were made to sampling points (identified by unit-subunit-site-point_name) in Abreed_and_non_breed.csv (now named with the suffix `_orig`, hereafter 'Abreed_orig'), which contained multiple coordinate pairs, using the script `clean_coordinates.py`. The CSV contains bird data used for SoN 2023 bird analysis, from 2012 to 2021.
 It should be noted that some of the listed corrections may also apply to succeeding years of the national monitoring program (e.g., the misnaming of Med Maquis Iftach Near 2 as Iftach Near 1).
@@ -165,3 +169,15 @@ Similarly:
 | 33.17772000000001,35.54867000000001 | Planted Conifer Forest | Manara | Manara Far 3 | Manara KKL Plantings 3 | Most recent year: 2021 | 10 |
 | 33.182770000000005,35.548300000000005 | Planted Conifer Forest | Manara | Manara 1 | Manara KKL Plantings 1 | Most recent year: 2021 | 5 |
 | 33.182770000000005,35.548300000000005 | Planted Conifer Forest | Manara | Manara Far 1 | Manara KKL Plantings 1 | Most recent year: 2021 | 10 |
+
+## Disturbances - weather discrepances
+
+**Date:** 2025-06-21  
+**Input file:** data/Abreed_and_non_breed_cleaned_mult_coord_point_names_cleaned.csv  
+**Cleaned output file:** data/Abreed_and_non_breed_cleaned.csv  
+
+For all records with the value 'harsh_weather' in the `disturbances` column:
+ - `disturbances` set to blank
+ - `weather_desc` set to 'windy.rain_bursts'
+ - values from `comment_disturbances` were copied to `comment_weather`
+ - `comment_disturbances` set to blank
