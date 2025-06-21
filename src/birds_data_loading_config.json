@@ -1,0 +1,123 @@
+{
+  "files": {
+    "monitoring_data_source": "./data/Abreed_and_non_breed_cleaned_mult_coord_point_names_cleaned.csv",
+    "breeding_truth_table": "./data/observed_species_breeding_truth_table-working_copy.csv",
+    "species_interaction_table": "./data/20230530_species_interacting_with_sampling_point.csv"
+  },
+  "taxon_version": {
+    "_comment": "Specify version_year to use a specific taxonomy year, or omit/set to null to use current versions (is_current = TRUE)",
+    "version_year": 2024
+  },  "field_mappings": {
+    "_comment": "Field mappings for different source files",
+    "monitoring_data_csv": {
+      "_comment": "Maps database field names to monitoring data CSV column names",
+      "scientific_name": "SciName",
+      "campaign_code": "campaign",
+      "year": "year",
+      "season": "season",
+      "unit_name": "unit",
+      "subunit_name": "subunit",
+      "site_name": "site",
+      "point_name": "point_name",
+      "latitude": "latitude",
+      "longitude": "longitude",
+      "notes": "notes",
+      "temperature": "temperature",
+      "wind": "wind",
+      "precipitation": "precipitation",
+      "clouds": "clouds",
+      "disturbances": "disturbances",
+      "monitors_name": "monitors_name",
+      "agriculture": "agriculture",
+      "settlements": "settlements",
+      "dunes": "dunes",
+      "land_use": "land_use",
+      "habitat_type": "habitat",      "radius_0_20": "rad_0_20",
+      "radius_20_100": "rad_20_100",      "radius_100_250": "rad_100_250",      "radius_over_250": "rad_over_250",      "is_interacting": "interaction",      "weather_code": "weather_desc",
+      "event_date": "date",
+      "start_time": "time",
+      "first_five_mins": "protocol",
+      "is_pilot": "pilot"
+    },
+    "breeding_truth_table_csv": {
+      "_comment": "Maps database field names to breeding truth table CSV column names",
+      "scientific_name": "SciName",
+      "unit_name": "unit",
+      "subunit_name": "subunit",
+      "is_breeding": "IsBreeding",
+      "is_breeding_confident": "is_breeding_confident",
+      "notes": "notes"
+    },
+    "species_interaction_csv": {
+      "_comment": "Maps database field names to species interaction CSV column names",
+      "scientific_name": "SciName",
+      "associated_with_sample_habitats": "IsInteractingFinalByRon",
+      "associated_with_sample_habitats_comment": "CommentsByEyal"
+    }
+  },
+  "unused_csv_fields": {
+    "monitoring_data_csv": [
+      "orig_lon",
+      "orig_lat", 
+      "comment_weather",
+      "comment_disturbances",
+      "record_id",
+      "total_count",
+      "protocol.version",
+      "established",
+      "SPECIES_CODE",
+      "count_under_250"
+    ]
+  },    "transformation_rules": {
+      "monitoring_data_csv": {
+        "first_five_mins": {
+          "source_field": "protocol",
+          "mapping": {
+            "A": true,
+            "B": false
+          },
+          "description": "Convert protocol 'A' to True (first five minutes), 'B' to False"
+        },
+        "is_interacting": {
+          "source_field": "interaction", 
+          "mapping": {
+            "yes": true,
+            "no": false,
+            "null": false
+          },
+          "description": "Convert interaction 'yes' to True, 'no'/missing to False"
+        },
+        "is_pilot": {
+          "source_field": "pilot",
+          "mapping": {
+            "True": true,
+            "False": false,
+            "null": false
+          },
+          "description": "Convert pilot 'True' to True, 'False'/missing to False"
+        }
+      },
+      "breeding_truth_table_csv": {
+        "is_breeding": {
+          "source_field": "IsBreeding",
+          "mapping": {
+            "1": true,
+            "0": false,
+            "null": false
+          },
+          "description": "Convert breeding '1' to True, '0'/missing to False"
+        }
+      },
+      "species_interaction_csv": {
+        "associated_with_sample_habitats": {
+          "source_field": "IsInteractingFinalByRon",
+          "mapping": {
+            "1": true,
+            "0": false,
+            "null": false
+          },
+          "description": "Convert interaction '1' to True, '0'/missing to False"
+      }
+    }
+  }
+}
