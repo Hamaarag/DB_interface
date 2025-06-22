@@ -56,10 +56,19 @@ def clean_coordinates(input_file, output_file, flagged_file, distance_threshold=
         df = pd.read_csv(input_file)
         logger.info(f"Loaded {len(df)} rows")
 
+        # Preserve original coordinate fields and create working copies
+        logger.info("Preserving original coordinate fields...")
+        df = df.rename(columns={"lon": "orig_lon", "lat": "orig_lat"})
+
         # Use existing lat/lon fields directly
         logger.info("Using existing lat/lon coordinate fields...")
-        df["latitude"] = pd.to_numeric(df["lat"], errors="coerce")
-        df["longitude"] = pd.to_numeric(df["lon"], errors="coerce")
+        df["latitude"] = pd.to_numeric(df["orig_lat"], errors="coerce")
+        df["longitude"] = pd.to_numeric(df["orig_lon"], errors="coerce")
+
+        # Round coordinates to nearest 1e-6 for consistent precision
+        logger.info("Rounding coordinates to 1e-6 precision...")
+        df["latitude"] = df["latitude"].round(6)
+        df["longitude"] = df["longitude"].round(6)
 
         # Filter out rows with missing coordinates
         df_with_coords = df.dropna(subset=["latitude", "longitude"]).copy()
@@ -79,6 +88,7 @@ def clean_coordinates(input_file, output_file, flagged_file, distance_threshold=
 
         cleaned_rows = []
         flagged_rows = []
+        auto_correction_log = []
         cleaning_stats = {
             "total_points": 0,
             "unique_point_groups": unique_point_groups_count,
@@ -121,12 +131,43 @@ def clean_coordinates(input_file, output_file, flagged_file, distance_threshold=
                     # Auto-correct: use most recent coordinates
                     most_recent_coords = group_df.loc[group_df["year"].idxmax()]
 
+                    # Collect coordinate details for logging
+                    coord_details = []
+                    years_affected = set()
+                    for _, coord_row in unique_coords.iterrows():
+                        years = group_df[
+                            (group_df["latitude"] == coord_row["latitude"])
+                            & (group_df["longitude"] == coord_row["longitude"])
+                        ]["year"].unique()
+                        years_2digit = [
+                            f"{int(year) % 100:02d}" for year in years if pd.notna(year)
+                        ]
+                        coord_details.append(
+                            {
+                                "coordinates": f"{coord_row['latitude']},{coord_row['longitude']}",
+                                "years": sorted(years_2digit),
+                            }
+                        )
+                        years_affected.update(years_2digit)
+
+                    # Log auto-correction details
+                    auto_correction_log.append(
+                        {
+                            "point_group": f"{unit}/{subunit}/{site}/{point_name}",
+                            "coordinate_count": len(unique_coords),
+                            "max_distance": max_distance,
+                            "years_affected": sorted(years_affected),
+                            "coordinates": coord_details,
+                            "resolution_coordinates": f"{most_recent_coords['latitude']},{most_recent_coords['longitude']}",
+                            "resolution_year": most_recent_coords["year"],
+                            "rows_corrected": len(group_df),
+                        }
+                    )
+
                     # Update all rows in this group with the most recent coordinates
                     corrected_group = group_df.copy()
                     corrected_group["latitude"] = most_recent_coords["latitude"]
                     corrected_group["longitude"] = most_recent_coords["longitude"]
-                    corrected_group["lat"] = most_recent_coords["latitude"]
-                    corrected_group["lon"] = most_recent_coords["longitude"]
 
                     cleaned_rows.extend(corrected_group.to_dict("records"))
                     cleaning_stats["auto_corrected"] += len(group_df)
@@ -174,9 +215,6 @@ def clean_coordinates(input_file, output_file, flagged_file, distance_threshold=
         final_df = pd.DataFrame(cleaned_rows)
         if len(df_without_coords) > 0:
             final_df = pd.concat([final_df, df_without_coords], ignore_index=True)
-
-        # Rename original coordinate fields to preserve them
-        final_df = final_df.rename(columns={"lon": "orig_lon", "lat": "orig_lat"})
 
         logger.info(f"Writing cleaned data to {output_file}")  # Write outputs
         final_df.to_csv(output_file, index=False)
@@ -231,6 +269,28 @@ def clean_coordinates(input_file, output_file, flagged_file, distance_threshold=
             flagged_df = flagged_df[existing_columns]
 
             flagged_df.to_csv(flagged_file, index=False)
+
+        # Generate detailed cleaning log
+        input_base = os.path.splitext(input_file)[0]
+        log_file = f"{input_base}_coordinate_cleaning.md"
+        logger.info(f"Writing detailed cleaning log to {log_file}")
+
+        # Prepare complete statistics for logging
+        log_stats = cleaning_stats.copy()
+        log_stats["total_rows"] = len(df)
+        log_stats["rows_with_coords"] = len(df_with_coords)
+        log_stats["rows_without_coords"] = len(df_without_coords)
+
+        write_cleaning_log(
+            log_file,
+            input_file,
+            distance_threshold,
+            log_stats,
+            auto_correction_log,
+            flagged_rows,
+            output_file,
+            flagged_file,
+        )
 
         # Print summary statistics
         logger.info("=== COORDINATE CLEANING SUMMARY ===")
@@ -364,12 +424,14 @@ def find_nearest_neighbors(flagged_rows, df_with_coords):
                         return False
                     else:
                         return a == b
-                
+
                 if (
                     safe_equal(candidate_row["unit"], flagged_point["unit"])
                     and safe_equal(candidate_row["subunit"], flagged_point["subunit"])
                     and safe_equal(candidate_row["site"], flagged_point["site"])
-                    and safe_equal(candidate_row["point_name"], flagged_point["point_name"])
+                    and safe_equal(
+                        candidate_row["point_name"], flagged_point["point_name"]
+                    )
                     and abs(candidate_row["latitude"] - lat) < 1e-5
                     and abs(candidate_row["longitude"] - lon) < 1e-5
                 ):
@@ -473,6 +535,122 @@ def find_nearest_neighbors(flagged_rows, df_with_coords):
         enhanced_flagged_rows.append(ordered_point)
 
     return enhanced_flagged_rows
+
+
+def write_cleaning_log(
+    log_file,
+    input_file,
+    distance_threshold,
+    cleaning_stats,
+    auto_correction_log,
+    flagged_rows,
+    output_file,
+    flagged_file,
+):
+    """
+    Write a detailed markdown log of the coordinate cleaning process.
+    """
+    with open(log_file, "w", encoding="utf-8") as f:
+        # Header section
+        f.write("# COORDINATE CLEANING LOG\n\n")
+        f.write(f"**Timestamp:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+        f.write(f"**Input file:** {input_file}\n")
+        f.write(f"**Distance threshold:** {distance_threshold} meters\n")
+        f.write(f"**Coordinate precision:** 1e-6 degrees\n\n")
+
+        # Processing notes
+        f.write("## PROCESSING NOTES\n\n")
+        f.write("- All coordinates rounded to 1e-6 precision before analysis\n")
+        f.write("- Original coordinates preserved as orig_lat, orig_lon fields\n")
+        f.write("- Auto-correction uses coordinates from the most recent year\n")
+        f.write(f"- Flagged discrepancies exported to: {flagged_file}\n")
+        f.write(f"- Cleaned data exported to: {output_file}\n\n")
+        # Summary statistics
+        f.write("## SUMMARY STATISTICS\n\n")
+        f.write(f"- **Total rows processed:** {cleaning_stats['total_rows']}\n")
+        f.write(
+            f"- **Rows with valid coordinates:** {cleaning_stats['rows_with_coords']}\n"
+        )
+        f.write(
+            f"- **Rows without coordinates:** {cleaning_stats['rows_without_coords']}\n"
+        )
+        f.write(
+            f"- **Unique point groups examined:** {cleaning_stats['unique_point_groups']}\n"
+        )
+        unique_groups = (
+            cleaning_stats["unique_point_groups"]
+            - len(auto_correction_log)
+            - len(flagged_rows)
+        )
+        f.write(f"- **Point groups with unique coordinates:** {unique_groups}\n")
+        f.write(f"- **Point groups auto-corrected:** {len(auto_correction_log)}\n")
+        f.write(f"- **Point groups flagged for review:** {len(flagged_rows)}\n")
+        
+        # Calculate total rows affected
+        total_auto_corrected_rows = sum(correction['rows_corrected'] for correction in auto_correction_log)
+        total_flagged_rows = sum(flagged['row_count'] for flagged in flagged_rows)
+        
+        f.write(f"- **Total rows auto-corrected:** {total_auto_corrected_rows}\n")
+        f.write(f"- **Total rows flagged for manual review:** {total_flagged_rows}\n\n")
+
+        # Auto-corrections section
+        if auto_correction_log:
+            f.write(f"## AUTO-CORRECTIONS (≤{distance_threshold}m)\n\n")
+            for correction in auto_correction_log:
+                f.write(f"### Point Group: {correction['point_group']}\n\n")
+                f.write(f"- **Coordinate count:** {correction['coordinate_count']}\n")
+                f.write(
+                    f"- **Max distance between coordinates:** {correction['max_distance']:.1f}m\n"
+                )
+                f.write(
+                    f"- **Years affected:** {', '.join(map(str, correction['years_affected']))}\n"
+                )
+                f.write(f"- **Coordinates found:**\n")
+                for coord in correction["coordinates"]:
+                    f.write(
+                        f"  * {coord['coordinates']} (years: {', '.join(coord['years'])})\n"
+                    )
+                f.write(
+                    f"- **Resolution:** Used most recent coordinates ({correction['resolution_coordinates']}) from year {correction['resolution_year']}\n"
+                )
+                f.write(f"- **Rows corrected:** {correction['rows_corrected']}\n\n")
+
+        # Flagged section
+        if flagged_rows:
+            f.write(f"## FLAGGED FOR MANUAL REVIEW (>{distance_threshold}m)\n\n")
+            for flagged in flagged_rows:
+                point_group = f"{flagged['unit']}/{flagged['subunit']}/{flagged['site']}/{flagged['point_name']}"
+                f.write(f"### Point Group: {point_group}\n\n")
+                f.write(f"- **Coordinate count:** {flagged['coordinate_count']}\n")
+                f.write(
+                    f"- **Max distance between coordinates:** {flagged['max_distance_meters']:.1f}m\n"
+                )
+
+                # Collect years from all coordinates
+                all_years = []
+                coord_idx = 1
+                while f"years_{coord_idx}" in flagged:
+                    if flagged[f"years_{coord_idx}"]:
+                        all_years.extend(flagged[f"years_{coord_idx}"].split(";"))
+                    coord_idx += 1
+                f.write(f"- **Years affected:** {', '.join(sorted(set(all_years)))}\n")
+                f.write(f"- **Coordinates found:**\n")
+
+                # List coordinates with their years
+                coord_idx = 1
+                while f"coordinates_{coord_idx}" in flagged:
+                    coord = flagged[f"coordinates_{coord_idx}"]
+                    years = flagged.get(f"years_{coord_idx}", "")
+                    f.write(f"  * {coord} (years: {years.replace(';', ', ')})\n")
+                    coord_idx += 1
+
+                f.write(f"- **Status:** REQUIRES MANUAL CURATION\n")
+                f.write(
+                    f"- **Action needed:** Review source data or create coordinate override\n\n"
+                )
+
+        f.write("---\n")
+        f.write("*End of coordinate cleaning log*\n")
 
 
 def main():
