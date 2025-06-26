@@ -1,6 +1,6 @@
 {
   "files": {
-    "monitoring_data_source": "./data/Abreed_and_non_breed_cleaned.csv",
+    "monitoring_data_source": "./data/Abreed_and_non_breed_cleaned_1e-4.csv",
     "breeding_truth_table": "./data/observed_species_breeding_truth_table-working_copy.csv",
     "species_interaction_table": "./data/20230530_species_interacting_with_sampling_point.csv"
   },

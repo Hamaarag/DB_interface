@@ -126,6 +126,8 @@ def detect_coordinate_conflicts(input_file, output_file, coordinate_precision=1e
                 # Find a point name from the latest year
                 latest_points = group[group["year"].str.contains(str(latest_year))]
                 target_point_name = latest_points.iloc[0]['point_name']
+                target_latitude = latest_points.iloc[0]['latitude']
+                target_longitude = latest_points.iloc[0]['longitude']
                 
                 # Apply the fix to ALL rows with these coordinates (regardless of current point name)
                 mask = (
@@ -143,12 +145,15 @@ def detect_coordinate_conflicts(input_file, output_file, coordinate_precision=1e
                     # Get the point names that will be changed (excluding the target)
                     old_point_names = [name for name in unique_point_names if name != target_point_name]
                     
-                    # Apply the change
+                    # Apply the changes - both point name AND coordinates
                     df_corrected.loc[mask, 'point_name'] = target_point_name
+                    df_corrected.loc[mask, 'latitude'] = target_latitude
+                    df_corrected.loc[mask, 'longitude'] = target_longitude
                     
                     # Log the correction
                     correction_info = {
                         'coordinates': f"{lat_rounded},{lon_rounded}",
+                        'target_coordinates': f"{target_latitude},{target_longitude}",
                         'old_point_names': ";".join(old_point_names),
                         'new_point_name': target_point_name,
                         'unit': unit,
@@ -159,7 +164,7 @@ def detect_coordinate_conflicts(input_file, output_file, coordinate_precision=1e
                     corrections_made.append(correction_info)
                 
                 auto_fixed_count += 1
-                logger.info(f"Auto-fixed conflict at {unit}/{site} ({lat_rounded},{lon_rounded}): standardized to '{target_point_name}' (most recent: {latest_year})")
+                logger.info(f"Auto-fixed conflict at {unit}/{site} ({lat_rounded},{lon_rounded}): standardized to '{target_point_name}' at ({target_latitude},{target_longitude}) (most recent: {latest_year})")
           # Generate output file names
         input_base = os.path.splitext(input_file)[0]
         if cleaned_output_file is None:
@@ -195,11 +200,11 @@ def detect_coordinate_conflicts(input_file, output_file, coordinate_precision=1e
                 
                 if corrections_made:
                     f.write("## Automatic Corrections Applied\n\n")
-                    f.write("| Coordinates | Unit | Site | Old Point Names | New Point Name | Reason | Rows Affected |\n")
-                    f.write("|-------------|------|------|-----------------|----------------|--------|---------------|\n")
+                    f.write("| Grouped Coordinates | Target Coordinates | Unit | Site | Old Point Names | New Point Name | Reason | Rows Affected |\n")
+                    f.write("|--------------------|--------------------|------|------|-----------------|----------------|--------|---------------|\n")
                     
                     for correction in corrections_made:
-                        f.write(f"| {correction['coordinates']} | {correction['unit']} | {correction['site']} | ")
+                        f.write(f"| {correction['coordinates']} | {correction['target_coordinates']} | {correction['unit']} | {correction['site']} | ")
                         f.write(f"{correction['old_point_names']} | {correction['new_point_name']} | ")
                         f.write(f"{correction['reason']} | {correction['rows_affected']} |\n")
                 
