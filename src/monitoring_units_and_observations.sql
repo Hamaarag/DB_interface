@@ -43,25 +43,38 @@ INSERT INTO weather_description_lookup (weather_code, weather_description) VALUE
 -- Monitoring Unit Table
 CREATE TABLE monitoring_unit (
   unit_id UUID PRIMARY KEY,
-  unit_name TEXT NOT NULL,
-  subunit_name TEXT,
+  unit_name TEXT NOT NULL UNIQUE,
   description TEXT
+);
+
+-- Monitoring Subunit Table
+CREATE TABLE monitoring_subunit (
+  subunit_id UUID PRIMARY KEY,
+  unit_id UUID REFERENCES monitoring_unit(unit_id) ON DELETE RESTRICT,
+  subunit_name TEXT NOT NULL,
+  description TEXT,
+  
+  CONSTRAINT unique_subunit_in_unit UNIQUE (unit_id, subunit_name)
 );
 
 -- Monitoring Site Table
 CREATE TABLE monitoring_site (
   site_id UUID PRIMARY KEY,
   unit_id UUID REFERENCES monitoring_unit(unit_id) ON DELETE RESTRICT,
+  subunit_id UUID REFERENCES monitoring_subunit(subunit_id) ON DELETE RESTRICT,
   site_name TEXT NOT NULL,
   description TEXT,
   
-  CONSTRAINT unique_site_in_unit UNIQUE (unit_id, site_name)
+  -- Site names must be unique within their container
+  -- For sites with subunits: unique within subunit
+  -- For sites without subunits: unique within unit
+  CONSTRAINT unique_site_in_subunit UNIQUE (subunit_id, site_name),
+  CONSTRAINT unique_site_in_unit_only UNIQUE (unit_id, site_name) DEFERRABLE INITIALLY DEFERRED
 );
 
 -- Monitoring Point Table
 CREATE TABLE monitoring_point (
   point_id UUID PRIMARY KEY,
-  unit_id UUID REFERENCES monitoring_unit(unit_id) ON DELETE RESTRICT,
   site_id UUID REFERENCES monitoring_site(site_id) ON DELETE RESTRICT,
   point_name TEXT NOT NULL,
   longitude NUMERIC(9,6) NOT NULL,
@@ -73,7 +86,7 @@ CREATE TABLE monitoring_point (
   land_use land_use_enum,
   notes TEXT,
   
-  CONSTRAINT unique_point_in_unit UNIQUE (unit_id, point_name),
+  CONSTRAINT unique_point_in_site UNIQUE (site_id, point_name),
   CONSTRAINT unique_coordinates UNIQUE (latitude, longitude)
 );
 
