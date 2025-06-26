@@ -1,0 +1,14 @@
+Trait loading summary – 2025-05-22
+Total records in raw trait table csv: 553
+- species_traits: 553
+- presence_il: 496
+- conservation statuses: 1032
+- multivalue traits:
+  • migration_type: 225
+  • zoogeographic_zone: 372
+  • landscape_formation: 407
+  • vegetation_formation: 368
+  • vegetation_density: 284
+  • nesting_ground: 308
+  • diet_type: 274
+  • foraging_ground: 283

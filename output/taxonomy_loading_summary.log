@@ -1,0 +1,6 @@
+
+Taxonomy backbone loading completed.
+- Total taxon_version records inserted: 0
+- Taxon insert failures: 40
+- Orphaned taxon_entity records removed: 0
+- report_as values not resolved: 2

@@ -176,9 +176,15 @@ def detect_coordinate_conflicts(input_file, output_file, coordinate_precision=1e
         
         # Log file naming convention
         if cleaned_output_file.endswith("_cleaned.csv"):
-            corrections_log_file = cleaned_output_file.replace("_cleaned.csv", "_cleaned.md")
+            log_filename = os.path.basename(cleaned_output_file).replace("_cleaned.csv", "_cleaned.md")
         else:
-            corrections_log_file = f"{os.path.splitext(cleaned_output_file)[0]}_corrections.md"
+            log_filename = f"{os.path.splitext(os.path.basename(cleaned_output_file))[0]}_corrections.md"
+        
+        # Direct .md output to the 'output' folder under workspace root
+        workspace_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        output_dir = os.path.join(workspace_root, "output")
+        os.makedirs(output_dir, exist_ok=True)
+        corrections_log_file = os.path.join(output_dir, log_filename)
         
         # Write cleaned data
         logger.info(f"Writing cleaned data to {cleaned_output_file}")

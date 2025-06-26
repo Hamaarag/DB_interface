@@ -1,0 +1,8 @@
+Total records in input CSV: 17415
+- taxon_version records inserted: 17415
+- taxon insert failures: 0
+- orphaned taxon_entity records removed: 0
+- report_as relationships updated: 3819
+- report_as values not resolved: 0
+- is_current set to: TRUE
+Elapsed time (min): 0.04
