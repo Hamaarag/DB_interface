@@ -60,9 +60,6 @@ po/*~
 rsconnect/
 .Rproj.user
 
-# output folder with log files
-output/
-
 # .idea folder for JetBrains IDEs
 .idea/
 
