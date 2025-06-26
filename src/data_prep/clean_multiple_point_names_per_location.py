@@ -5,6 +5,9 @@ Coordinate Conflict Detection and Resolution Script for Hamaarag Monitoring Data
 This script identifies cases where different sampling point names share the same coordinates,
 which would violate the unique_coordinates constraint in the database schema.
 
+Coordinate comparison is precision-based, not exact matching. Two coordinates are considered
+the same if they are within a configurable tolerance (default: 1e-4 degrees ≈ 11m).
+
 For conflicts within the same unit and site, it automatically applies fixes by keeping
 the most recent point name. For conflicts across different units or sites, it flags
 them for manual review.
@@ -33,9 +36,12 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def detect_coordinate_conflicts(input_file, output_file, coordinate_precision=1e-5, cleaned_output_file=None):
+def detect_coordinate_conflicts(input_file, output_file, coordinate_precision=1e-4, cleaned_output_file=None):
     """
     Detect and resolve coordinate conflicts where different point names share the same coordinates.
+    
+    Coordinate comparison is precision-based, not exact matching. Two coordinates are considered
+    the same if they are within the specified tolerance (coordinate_precision) of each other.
     
     For conflicts within the same unit and site, automatically applies the suggested fix.
     For conflicts across different units or sites, flags them for manual review.
@@ -43,7 +49,7 @@ def detect_coordinate_conflicts(input_file, output_file, coordinate_precision=1e
     Args:
         input_file: Path to cleaned CSV file from clean_coordinates.py
         output_file: Path to output conflicts CSV file
-        coordinate_precision: Tolerance for coordinate matching (default: 1e-5 degrees)
+        coordinate_precision: Tolerance for coordinate matching (default: 1e-4 degrees ≈ 11m)
         cleaned_output_file: Optional path for cleaned output file. If None, generates default name.
         
     Returns:
@@ -62,7 +68,7 @@ def detect_coordinate_conflicts(input_file, output_file, coordinate_precision=1e
         logger.info("Creating distinct point-coordinate combinations...")
         distinct_points = (
             df_with_coords.groupby(
-                ["unit", "subunit", "site", "point_name", "latitude", "longitude"],
+                ["unit", "site", "point_name", "latitude", "longitude"],
                 dropna=False,
             )
             .agg(
@@ -81,117 +87,72 @@ def detect_coordinate_conflicts(input_file, output_file, coordinate_precision=1e
 
         logger.info(
             f"Found {len(distinct_points)} distinct point-coordinate combinations"
-        )        # Group by coordinates (with precision tolerance) to find conflicts
+        )
+        # Group by coordinates (with precision tolerance) to find conflicts
         logger.info("Detecting coordinate conflicts...")
-        conflicts = []
         corrections_made = []
         
         # Create a copy of the input data for applying automatic fixes
         df_corrected = df.copy()
 
         # Round coordinates to specified precision for grouping
-        precision_factor = 1 / coordinate_precision
-        distinct_points["lat_rounded"] = (
-            np.round(distinct_points["latitude"] * precision_factor) / precision_factor
-        )
-        distinct_points["lon_rounded"] = (
-            np.round(distinct_points["longitude"] * precision_factor) / precision_factor
-        )
+        # Calculate number of decimal places from coordinate precision
+        decimal_places = int(-np.log10(coordinate_precision))
+        distinct_points["lat_rounded"] = np.round(distinct_points["latitude"], decimals=decimal_places)
+        distinct_points["lon_rounded"] = np.round(distinct_points["longitude"], decimals=decimal_places)
 
-        coord_groups = distinct_points.groupby(["lat_rounded", "lon_rounded"])
+        # Group by unit, site, and rounded coordinates
+        coord_groups = distinct_points.groupby(["unit", "site", "lat_rounded", "lon_rounded"])
 
         conflict_count = 0
         auto_fixed_count = 0
-        for (lat_rounded, lon_rounded), group in coord_groups:
-            # Check if multiple point names share these coordinates
-            unique_points = group[
-                ["unit", "subunit", "site", "point_name"]
-            ].drop_duplicates()
+        conflicts = []
 
-            if len(unique_points) > 1:
+        for (unit, site, lat_rounded, lon_rounded), group in coord_groups:
+            # Check if multiple point names exist for this location
+            unique_point_names = group["point_name"].unique()
+            
+            if len(unique_point_names) > 1:
                 conflict_count += 1
-
-                # Get all the details for this coordinate conflict
-                units = sorted(group["unit"].unique())
-                subunits = sorted(
-                    [str(x) for x in group["subunit"].unique() if pd.notna(x)]
-                )
-                sites = sorted(group["site"].unique())
-                point_names = sorted(group["point_name"].unique())
-                years = sorted(
-                    set(
-                        [
-                            year
-                            for year_list in group["year"]
-                            for year in year_list.split(";")
-                            if year
-                        ]
-                    )
-                )                # Determine if this can be auto-fixed or needs manual review
-                if len(set(units)) == 1 and len(set(sites)) == 1:
-                    # Same unit and site - apply automatic fix
-                    latest_year = max([int(year) for year in years])
-                    latest_points = group[group["year"].str.contains(str(latest_year))]
-                    
-                    if len(latest_points) > 0:
-                        target_point_name = latest_points.iloc[0]['point_name']
-                        auto_fixed_count += 1
-                        
-                        # Apply the fix to the corrected dataframe
-                        for _, point_row in unique_points.iterrows():
-                            if point_row['point_name'] != target_point_name:
-                                # Update all rows matching this point to use the target point name
-                                mask = (
-                                    (df_corrected['unit'] == point_row['unit']) &
-                                    (df_corrected['subunit'] == point_row['subunit'] if pd.notna(point_row['subunit']) 
-                                     else df_corrected['subunit'].isna()) &
-                                    (df_corrected['site'] == point_row['site']) &
-                                    (df_corrected['point_name'] == point_row['point_name']) &
-                                    (abs(df_corrected['latitude'] - lat_rounded) < coordinate_precision) &
-                                    (abs(df_corrected['longitude'] - lon_rounded) < coordinate_precision)
-                                )
-                                
-                                rows_updated = mask.sum()
-                                df_corrected.loc[mask, 'point_name'] = target_point_name
-                                
-                                # Log the correction
-                                correction_info = {
-                                    'coordinates': f"{lat_rounded},{lon_rounded}",
-                                    'old_point_name': point_row['point_name'],
-                                    'new_point_name': target_point_name,
-                                    'unit': point_row['unit'],
-                                    'subunit': point_row['subunit'] if pd.notna(point_row['subunit']) else 'N/A',
-                                    'site': point_row['site'],
-                                    'reason': f"Most recent year: {latest_year}",
-                                    'rows_affected': rows_updated
-                                }
-                                corrections_made.append(correction_info)
-                        
-                        logger.info(f"Auto-fixed conflict at {lat_rounded},{lon_rounded}: kept '{target_point_name}' (most recent: {latest_year})")
-                        continue  # Skip adding to conflicts list
                 
-                # If we reach here, it needs manual review
-                suggested_fix = "Manual review required - different units/sites" if len(set(units)) > 1 or len(set(sites)) > 1 else "Manual review required"
-
-                conflict_info = {
-                    "coordinates": f"{lat_rounded},{lon_rounded}",
-                    "conflict_count": len(unique_points),
-                    "units": ";".join(units),
-                    "subunits": ";".join(subunits) if subunits else "",
-                    "sites": ";".join(sites),
-                    "point_names": ";".join(point_names),
-                    "years": ";".join(years),
-                    "suggested_fix": suggested_fix,
+                # Find the most recent year across all points at this location
+                all_years = []
+                for year_list in group["year"]:
+                    all_years.extend([int(year) for year in year_list.split(";") if year])
+                
+                latest_year = max(all_years)
+                
+                # Find a point name from the latest year
+                latest_points = group[group["year"].str.contains(str(latest_year))]
+                target_point_name = latest_points.iloc[0]['point_name']
+                
+                # Apply the fix to ALL rows with these coordinates (regardless of current point name)
+                mask = (
+                    (df_corrected['unit'] == unit) &
+                    (df_corrected['site'] == site) &
+                    (np.round(df_corrected['latitude'], decimals=decimal_places) == lat_rounded) &
+                    (np.round(df_corrected['longitude'], decimals=decimal_places) == lon_rounded)
+                )
+                
+                rows_updated = mask.sum()
+                
+                # Apply the change
+                df_corrected.loc[mask, 'point_name'] = target_point_name
+                
+                # Log the correction
+                correction_info = {
+                    'coordinates': f"{lat_rounded},{lon_rounded}",
+                    'old_point_names': ";".join(unique_point_names),
+                    'new_point_name': target_point_name,
+                    'unit': unit,
+                    'site': site,
+                    'reason': f"Most recent year: {latest_year}",
+                    'rows_affected': rows_updated
                 }
-
-                conflicts.append(conflict_info)
-
-                logger.warning(
-                    f"Conflict at {lat_rounded},{lon_rounded}: {len(unique_points)} different points"                )
-                for _, point in unique_points.iterrows():
-                    logger.warning(
-                        f"  - {point['unit']}/{point['subunit']}/{point['site']}/{point['point_name']}"
-                    )
+                corrections_made.append(correction_info)
+                
+                auto_fixed_count += 1
+                logger.info(f"Auto-fixed conflict at {unit}/{site} ({lat_rounded},{lon_rounded}): standardized to '{target_point_name}' (most recent: {latest_year})")
           # Generate output file names
         input_base = os.path.splitext(input_file)[0]
         if cleaned_output_file is None:
@@ -227,12 +188,12 @@ def detect_coordinate_conflicts(input_file, output_file, coordinate_precision=1e
                 
                 if corrections_made:
                     f.write("## Automatic Corrections Applied\n\n")
-                    f.write("| Coordinates | Unit | Site | Old Point Name | New Point Name | Reason | Rows Affected |\n")
-                    f.write("|-------------|------|------|----------------|----------------|--------|---------------|\n")
+                    f.write("| Coordinates | Unit | Site | Old Point Names | New Point Name | Reason | Rows Affected |\n")
+                    f.write("|-------------|------|------|-----------------|----------------|--------|---------------|\n")
                     
                     for correction in corrections_made:
                         f.write(f"| {correction['coordinates']} | {correction['unit']} | {correction['site']} | ")
-                        f.write(f"{correction['old_point_name']} | {correction['new_point_name']} | ")
+                        f.write(f"{correction['old_point_names']} | {correction['new_point_name']} | ")
                         f.write(f"{correction['reason']} | {correction['rows_affected']} |\n")
                 
                 if conflicts:
@@ -252,7 +213,6 @@ def detect_coordinate_conflicts(input_file, output_file, coordinate_precision=1e
                     "coordinates",
                     "conflict_count", 
                     "units",
-                    "subunits",
                     "sites",
                     "point_names",
                     "years",
@@ -301,8 +261,8 @@ def main():
     parser.add_argument(
         "--coordinate-precision",
         type=float,
-        default=1e-5,
-        help="Coordinate precision tolerance in degrees (default: 1e-5)",
+        default=1e-4,
+        help="Coordinate precision tolerance in degrees (default: 1e-4)",
     )
 
     args = parser.parse_args()
