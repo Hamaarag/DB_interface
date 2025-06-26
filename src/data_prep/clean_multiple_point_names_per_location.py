@@ -95,11 +95,12 @@ def detect_coordinate_conflicts(input_file, output_file, coordinate_precision=1e
         # Create a copy of the input data for applying automatic fixes
         df_corrected = df.copy()
 
-        # Round coordinates to specified precision for grouping
+        # Truncate coordinates to specified precision for grouping
         # Calculate number of decimal places from coordinate precision
         decimal_places = int(-np.log10(coordinate_precision))
-        distinct_points["lat_rounded"] = np.round(distinct_points["latitude"], decimals=decimal_places)
-        distinct_points["lon_rounded"] = np.round(distinct_points["longitude"], decimals=decimal_places)
+        precision_factor = 10 ** decimal_places
+        distinct_points["lat_rounded"] = np.floor(distinct_points["latitude"] * precision_factor) / precision_factor
+        distinct_points["lon_rounded"] = np.floor(distinct_points["longitude"] * precision_factor) / precision_factor
 
         # Group by unit, site, and rounded coordinates
         coord_groups = distinct_points.groupby(["unit", "site", "lat_rounded", "lon_rounded"])
@@ -130,26 +131,32 @@ def detect_coordinate_conflicts(input_file, output_file, coordinate_precision=1e
                 mask = (
                     (df_corrected['unit'] == unit) &
                     (df_corrected['site'] == site) &
-                    (np.round(df_corrected['latitude'], decimals=decimal_places) == lat_rounded) &
-                    (np.round(df_corrected['longitude'], decimals=decimal_places) == lon_rounded)
+                    (np.floor(df_corrected['latitude'] * precision_factor) / precision_factor == lat_rounded) &
+                    (np.floor(df_corrected['longitude'] * precision_factor) / precision_factor == lon_rounded)
                 )
                 
-                rows_updated = mask.sum()
+                # Only count rows that actually need to change (not already the target name)
+                rows_to_change_mask = mask & (df_corrected['point_name'] != target_point_name)
+                rows_updated = rows_to_change_mask.sum()
                 
-                # Apply the change
-                df_corrected.loc[mask, 'point_name'] = target_point_name
-                
-                # Log the correction
-                correction_info = {
-                    'coordinates': f"{lat_rounded},{lon_rounded}",
-                    'old_point_names': ";".join(unique_point_names),
-                    'new_point_name': target_point_name,
-                    'unit': unit,
-                    'site': site,
-                    'reason': f"Most recent year: {latest_year}",
-                    'rows_affected': rows_updated
-                }
-                corrections_made.append(correction_info)
+                if rows_updated > 0:
+                    # Get the point names that will be changed (excluding the target)
+                    old_point_names = [name for name in unique_point_names if name != target_point_name]
+                    
+                    # Apply the change
+                    df_corrected.loc[mask, 'point_name'] = target_point_name
+                    
+                    # Log the correction
+                    correction_info = {
+                        'coordinates': f"{lat_rounded},{lon_rounded}",
+                        'old_point_names': ";".join(old_point_names),
+                        'new_point_name': target_point_name,
+                        'unit': unit,
+                        'site': site,
+                        'reason': f"Most recent year: {latest_year}",
+                        'rows_affected': rows_updated
+                    }
+                    corrections_made.append(correction_info)
                 
                 auto_fixed_count += 1
                 logger.info(f"Auto-fixed conflict at {unit}/{site} ({lat_rounded},{lon_rounded}): standardized to '{target_point_name}' (most recent: {latest_year})")
