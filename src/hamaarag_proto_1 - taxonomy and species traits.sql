@@ -159,12 +159,12 @@ CREATE TABLE gbif_taxon_link (
 );
 
 CREATE TABLE conservation_status_lookup (
-  status_code conservation_status_enum PRIMARY KEY,
+  conservation_code conservation_status_enum PRIMARY KEY,
   status_description TEXT NOT NULL UNIQUE
 );
 
 -- Insert standard conservation status descriptions
-INSERT INTO conservation_status_lookup (status_code, status_description) VALUES
+INSERT INTO conservation_status_lookup (conservation_code, status_description) VALUES
   ('LC', 'Least concern'),
   ('NE', 'Not evaluated'),
   ('NT', 'Near threatened'),

@@ -156,11 +156,11 @@ Table taxon_version {
 }
 
 Table taxon_change_log {
-  change_id int [pk]
+  change_id int [pk, increment]
   from_version_id uuid [ref: > taxon_version.taxon_version_id, note: 'ON DELETE RESTRICT']
   to_version_id uuid [ref: > taxon_version.taxon_version_id, note: 'ON DELETE RESTRICT']
   change_type change_type_enum
-  inherits_relations boolean
+  inherits_relations boolean [default: false]
   notes text
 }
 
@@ -176,14 +176,14 @@ Table species_traits {
 }
 
 Table gbif_taxon_link {
-  taxon_version_id UUID [pk, ref: > taxon_version.taxon_version_id]
+  taxon_version_id UUID [pk, ref: > taxon_version.taxon_version_id, note: 'ON DELETE CASCADE']
   gbif_taxon_id INTEGER
   gbif_version_year INTEGER
 }
 
 Table conservation_status_lookup {
-  status_code conservation_status_enum [pk]
-  status_description text [unique]
+  conservation_code conservation_status_enum [pk]
+  status_description text [not null, unique]
 }
 
 Table taxon_conservation_status {
@@ -250,20 +250,34 @@ Table diet_type {
 // Monitoring Tables
 Table monitoring_unit {
   unit_id uuid [pk]
-  unit_name text [not null]
-  subunit_name text
+  unit_name text [not null, unique]
   description text
+}
+
+Table monitoring_subunit {
+  subunit_id uuid [pk]
+  unit_id uuid [ref: > monitoring_unit.unit_id, note: 'ON DELETE RESTRICT']
+  subunit_name text [not null]
+  description text
+
+  Indexes {
+    (unit_id, subunit_name) [unique, name: 'unique_subunit_in_unit']
+  }
 }
 
 Table monitoring_site {
   site_id uuid [pk]
   unit_id uuid [ref: > monitoring_unit.unit_id, note: 'ON DELETE RESTRICT']
+  subunit_id uuid [ref: > monitoring_subunit.subunit_id, note: 'ON DELETE RESTRICT']
   site_name text [not null]
   description text
 
   Indexes {
-    (unit_id, site_name) [unique, name: 'unique_site_in_unit']
+    (subunit_id, site_name) [unique, name: 'unique_site_in_subunit']
+    (unit_id, site_name) [unique, name: 'unique_site_in_unit_only']
   }
+  
+  Note: 'Sites can belong to units with or without subunits. The unique_site_in_unit_only constraint is deferrable initially deferred in SQL implementation.'
 }
 
 Table weather_description_lookup {
@@ -273,20 +287,19 @@ Table weather_description_lookup {
 
 Table monitoring_point {
   point_id uuid [pk]
-  unit_id uuid [ref: > monitoring_unit.unit_id, note: 'ON DELETE RESTRICT']
   site_id uuid [ref: > monitoring_site.site_id, note: 'ON DELETE RESTRICT']
   point_name text [not null]
   longitude numeric(9,6) [not null]
   latitude numeric(8,6) [not null]
   habitat_type habitat_type_enum
-  agriculture text
-  settlements text
+  agriculture text [note: 'Categorical field (e.g., "Near", "Far", NULL)']
+  settlements text [note: 'Categorical field (e.g., "Near", "Far", NULL)']
   dunes dune_type_enum
   land_use land_use_enum
   notes text
 
   Indexes {
-    (unit_id, point_name) [unique, name: 'unique_point_in_unit']
+    (site_id, point_name) [unique, name: 'unique_point_in_site']
     (latitude, longitude) [unique, name: 'unique_coordinates']
   }
 }
@@ -308,10 +321,10 @@ Table monitoring_event {
   event_date date [not null]
   start_time time
   weather_code text [ref: > weather_description_lookup.weather_code]
-  temperature smallint
-  wind smallint
-  clouds smallint
-  precipitation smallint
+  temperature smallint [note: 'Using ordinal scale from protocol']
+  wind smallint [note: 'Using ordinal scale from protocol']
+  clouds smallint [note: 'Using ordinal scale from protocol']
+  precipitation smallint [note: 'Using ordinal scale from protocol']
   disturbances text
   monitors_name text
   is_pilot boolean [default: false, note: 'Whether this is a pilot study event']
@@ -332,7 +345,7 @@ Table species_observation {
   radius_100_250 integer [default: 0]
   radius_over_250 integer [default: 0]
   count_under_250 integer [note: 'Generated column: radius_0_20 + radius_20_100 + radius_100_250', not null]
-  is_interacting boolean
+  is_interacting boolean [note: 'Whether bird was interacting with the sampling point (TRUE) or just flying over (FALSE)']
   notes text
 
   Note: 'Constraint: All radius values must be >= 0'

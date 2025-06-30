@@ -101,11 +101,11 @@ Links to GBIF taxonomy.
 
 ### conservation_status_lookup
 
-Lookup table for conservation status descriptions.
+Lookup table for conservation status descriptions. This table provides human-readable descriptions for conservation status codes to avoid storing the description repeatedly in the main conservation status table.
 
 | Column | Type | Description |
 |--------|------|-------------|
-| status_code | conservation_status_enum | Primary key, standardized conservation status code |
+| conservation_code | conservation_status_enum | Primary key, standardized conservation status code |
 | status_description | TEXT | Full description (e.g., Critically Endangered) (NOT NULL, UNIQUE) |
 
 **Pre-populated values**:
@@ -123,7 +123,7 @@ Lookup table for conservation status descriptions.
 
 ### taxon_conservation_status
 
-Links conservation statuses to taxa.
+Links conservation statuses to taxa. The conservation_code field stores only the standardized code (e.g., 'LC') - to get the full description (e.g., 'Least concern'), join with the conservation_status_lookup table on the conservation_code field.
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -132,6 +132,8 @@ Links conservation statuses to taxa.
 | conservation_code | conservation_status_enum | Code for the status (NOT NULL) |
 
 **Primary Key**: (taxon_version_id, conservation_scheme)
+
+**Note**: No foreign key constraint is used between conservation_code and conservation_status_lookup.conservation_code since the ENUM type already ensures valid values. The lookup table is used purely for normalization to avoid repeating descriptions.
 
 ### Trait Link Tables
 
